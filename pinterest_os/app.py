@@ -152,17 +152,9 @@ class MainWindow(QMainWindow):
             content.setContentsMargins(18, 6, 12, 12)
             content.setSpacing(16)
             title, subtitle = TITLES[name]
-            if name == "FILE":
-                workspace_heading = label("Workspace — Products and content destinations", "WorkspaceHeading")
-                workspace_heading.setWordWrap(False)
-                content.addWidget(workspace_heading)
-            elif name == "ANALYTICS":
-                analytics_heading = label(f"{title} — {subtitle}", "WorkspaceHeading")
-                analytics_heading.setWordWrap(False)
-                content.addWidget(analytics_heading)
-            else:
-                content.addWidget(label(title, "Heading"))
-                content.addWidget(label(subtitle, "Muted"))
+            heading = label(f"{title} — {subtitle}", "WorkspaceHeading")
+            heading.setWordWrap(False)
+            content.addWidget(heading)
             if name in {"FILE", "PIN", "BOARD"}:
                 table = {"FILE": "products", "PIN": "pins", "BOARD": "boards"}[name]
                 if name == "PIN":
