@@ -94,9 +94,9 @@ class TimePage(QWidget):
         layout.addWidget(QLabel("Product time and estimated labor (historical snapshots; legacy unknown):"))
         self.currency = QComboBox()
         layout.addWidget(self.currency)
-        self.products_table = QTableWidget(0, 4)
+        self.products_table = QTableWidget(0, 6)
         self.products_table.setHorizontalHeaderLabels(
-            ["Product", "Pins", "Time", "Labor estimate"])
+            ["Product", "Worked pins", "Time", "Labor estimate", "Time / pin", "Labor / pin"])
         self.products_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         layout.addWidget(self.products_table)
         button = QPushButton("Refresh time accounting")
@@ -161,13 +161,21 @@ class TimePage(QWidget):
 
     def refresh_products(self):
         currency = self.currency.currentData()
-        rows = product_time_summary(self.storage, currency)
+        from .time_productivity import productivity_rows
+        rows = productivity_rows(self.storage, currency)
         self.products_table.setRowCount(len(rows))
         for i, item in enumerate(rows):
             amount = item["labor_cents"]
-            values = (item["product_name"], item["pins"], duration(item["seconds"]),
+            per_pin = item["seconds_per_worked_pin"]
+            cost_per_pin = item["labor_cents_per_worked_pin"]
+            values = (item["product_name"], item["worked_pins"],
+                      duration(item["seconds"]),
                       "Unknown" if amount is None else
-                      f"{Decimal(amount) / 100:.2f} {currency}")
+                      f"{Decimal(amount) / 100:.2f} {currency}",
+                      "N/A" if per_pin is None else duration(
+                          per_pin.quantize(Decimal("1"), rounding=ROUND_HALF_UP)),
+                      "N/A" if cost_per_pin is None else
+                      f"{cost_per_pin / 100:.2f} {currency}")
             for j, value in enumerate(values):
                 self.products_table.setItem(i, j, QTableWidgetItem(str(value)))
         self.products_table.resizeColumnsToContents()
