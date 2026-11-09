@@ -2,6 +2,7 @@
 
 No second timer or duplicate writes: MainWindow owns the active session.
 """
+from decimal import Decimal, ROUND_HALF_UP
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QTableWidget, QTableWidgetItem, QComboBox, QLineEdit
 
 
@@ -18,6 +19,38 @@ def time_summary(storage):
             "tracked_seconds": allocated,
             "unattributed_seconds": max(0, sessions[1] - allocated),
             "tasks": entries}
+
+
+
+def product_time_summary(storage, currency=None):
+    """Historical time grouped by CURRENT pin-to-product assignment.
+
+    Unassigned time is visible, not distributed. Current rate is an estimate,
+    not a historical payroll cost.
+    """
+    rows = storage.conn.execute(
+        """SELECT p.product_id, COALESCE(pr.name,'Unassigned'),
+                  COUNT(DISTINCT t.pin_id), SUM(t.seconds)
+           FROM time_entries t
+           LEFT JOIN pins p ON p.id=t.pin_id
+           LEFT JOIN products pr ON pr.id=p.product_id
+           GROUP BY p.product_id ORDER BY pr.name, p.product_id"""
+    ).fetchall()
+    rate = None
+    if currency:
+        found = storage.conn.execute(
+            "SELECT hourly_cents FROM labor_rates WHERE currency=?", (currency,)
+        ).fetchone()
+        if found:
+            rate = found[0]
+    result = []
+    for product_id, name, pin_count, seconds in rows:
+        cents = None if rate is None else int(
+            (Decimal(seconds) * Decimal(rate) / Decimal(3600)).quantize(
+                Decimal("1"), rounding=ROUND_HALF_UP))
+        result.append({"product_id": product_id, "product_name": name,
+                       "pins": pin_count, "seconds": seconds, "labor_cents": cents})
+    return result
 
 
 def duration(seconds):
@@ -56,12 +89,21 @@ class TimePage(QWidget):
         self.table.setHorizontalHeaderLabels(["Task", "Tracked time", "Entries"])
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         layout.addWidget(self.table)
+        layout.addWidget(QLabel("Product time and estimated labor (current pin assignments):"))
+        self.currency = QComboBox()
+        layout.addWidget(self.currency)
+        self.products_table = QTableWidget(0, 4)
+        self.products_table.setHorizontalHeaderLabels(
+            ["Product", "Pins", "Time", "Labor estimate"])
+        self.products_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        layout.addWidget(self.products_table)
         button = QPushButton("Refresh time accounting")
         button.clicked.connect(self.refresh)
         layout.addWidget(button)
         layout.addWidget(QLabel(
             "Time is not revenue or verified profit. Labor valuation is calculated "
             "in ANALYTICS using the configured hourly rate."))
+        self.currency.currentIndexChanged.connect(self.refresh_products)
         self.refresh()
 
     def apply_attribution(self):
@@ -104,3 +146,26 @@ class TimePage(QWidget):
             for j, value in enumerate((task, duration(seconds), count)):
                 self.table.setItem(i, j, QTableWidgetItem(str(value)))
         self.table.resizeColumnsToContents()
+        previous_currency = self.currency.currentData()
+        self.currency.blockSignals(True)
+        self.currency.clear()
+        self.currency.addItem("No labor valuation", None)
+        for (code,) in self.storage.conn.execute(
+                "SELECT currency FROM labor_rates ORDER BY currency"):
+            self.currency.addItem(code, code)
+        self.currency.setCurrentIndex(max(0, self.currency.findData(previous_currency)))
+        self.currency.blockSignals(False)
+        self.refresh_products()
+
+    def refresh_products(self):
+        currency = self.currency.currentData()
+        rows = product_time_summary(self.storage, currency)
+        self.products_table.setRowCount(len(rows))
+        for i, item in enumerate(rows):
+            amount = item["labor_cents"]
+            values = (item["product_name"], item["pins"], duration(item["seconds"]),
+                      "Unknown" if amount is None else
+                      f"{Decimal(amount) / 100:.2f} {currency}")
+            for j, value in enumerate(values):
+                self.products_table.setItem(i, j, QTableWidgetItem(str(value)))
+        self.products_table.resizeColumnsToContents()
