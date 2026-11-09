@@ -20,7 +20,7 @@ def test_carousel_order_and_zip(tmp_path):
         slides = db.carousel_slides(carousel)
         for slide in slides:
             png = tmp_path / f'{slide["pin_id"]}.png'
-            png.write_bytes(b"png-fixture")
+            png.write_bytes(bytes.fromhex("89504e470d0a1a0a") + (13).to_bytes(4, "big") + b"IHDR" + (1000).to_bytes(4, "big") + (1500).to_bytes(4, "big") + bytes([8, 6, 0, 0, 0]) + b"\x00\x00\x00\x00")
             db.save_pin_design(slide["pin_id"], '{"version":1}', str(png))
         slides = db.carousel_slides(carousel)
         assert validate_slides(slides) == []
@@ -44,3 +44,18 @@ def test_carousel_rejects_duplicates_and_missing_assets(tmp_path):
         assert validate_slides(db.carousel_slides(carousel))
     finally:
         db.close()
+
+def test_rejects_mismatched_dimensions_and_invalid_png(tmp_path):
+    first = tmp_path / "first.png"
+    second = tmp_path / "second.png"
+    def header(width, height):
+        return (bytes.fromhex("89504e470d0a1a0a") + (13).to_bytes(4, "big")
+                + b"IHDR" + width.to_bytes(4, "big") + height.to_bytes(4, "big")
+                + bytes([8, 6, 0, 0, 0]) + bytes(4))
+    first.write_bytes(header(1000, 1500))
+    second.write_bytes(header(800, 1200))
+    slides = [{"pin_id": 1, "png_path": str(first)},
+              {"pin_id": 2, "png_path": str(second)}]
+    assert any("different dimensions" in issue for issue in validate_slides(slides))
+    second.write_bytes(b"not a PNG")
+    assert any("invalid PNG header" in issue for issue in validate_slides(slides))
