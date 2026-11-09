@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import webbrowser
+from .canva_bridge import project_to_svg, validate_canva_design_id
 
 from PyQt6.QtCore import Qt, QRectF
 from PyQt6.QtGui import QColor, QFont, QImage, QPainter, QPixmap, QPen
@@ -131,6 +133,18 @@ class PinDesigner(QWidget):
         export.setObjectName("Primary")
         export.clicked.connect(self.export_png)
         form.addRow(export)
+        canva_export = QPushButton("Export editable SVG for Canva")
+        canva_export.clicked.connect(self.export_canva_svg)
+        form.addRow(canva_export)
+        open_canva = QPushButton("Open Canva")
+        open_canva.clicked.connect(lambda: webbrowser.open("https://www.canva.com/"))
+        form.addRow(open_canva)
+        self.canva_id = QLineEdit()
+        self.canva_id.setPlaceholderText("Canva design ID (D...)")
+        form.addRow("Canva design ID", self.canva_id)
+        link_canva = QPushButton("Link Canva design to pin")
+        link_canva.clicked.connect(self.link_canva)
+        form.addRow(link_canva)
         layout.addWidget(left)
         self.view = QGraphicsView(self.scene)
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -292,8 +306,34 @@ class PinDesigner(QWidget):
             return
         try:
             self.restore(json.loads(data["project_json"]))
+            self.canva_id.setText(data.get("canva_design_id", ""))
         except (ValueError, KeyError, TypeError) as exc:
             QMessageBox.warning(self, "Cannot load", str(exc))
+
+    def export_canva_svg(self):
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export SVG for Canva", "ithutir-canva.svg", "SVG (*.svg)")
+        if not path:
+            return
+        try:
+            project_to_svg(self.project(), path)
+            QMessageBox.information(
+                self, "SVG exported",
+                "Import this SVG in Canva. Text is stored as SVG text and images as separate SVG elements. "
+                "Canva may flatten or alter them; verify editability in Canva.")
+        except (OSError, ValueError, KeyError) as exc:
+            QMessageBox.warning(self, "SVG export failed", str(exc))
+
+    def link_canva(self):
+        pin_id = self.pin.currentData()
+        if not self.storage or pin_id is None:
+            QMessageBox.warning(self, "Select pin", "Select a pin first.")
+            return
+        try:
+            self.storage.set_canva_design_id(pin_id, self.canva_id.text().strip())
+            QMessageBox.information(self, "Linked", "Canva design ID linked to pin.")
+        except ValueError as exc:
+            QMessageBox.warning(self, "Invalid Canva ID", str(exc))
 
     def export_png(self):
         pin_id = self.pin.currentData()
