@@ -1,8 +1,10 @@
 """Offline operational analytics; never presents local status as Pinterest performance."""
 from collections import Counter
 
-from PyQt6.QtWidgets import QFileDialog, QLabel, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QComboBox, QFileDialog, QLabel, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 from .analytics_import import import_metrics, metric_history
+from .analytics_metrics import daily_performance, pin_performance
+from .analytics_chart import MetricsChart
 
 
 def operational_summary(storage):
@@ -44,6 +46,19 @@ class AnalyticsPage(QWidget):
         self.history = QTableWidget(0, 4)
         self.history.setHorizontalHeaderLabels(["Date", "Impressions", "Outbound clicks", "Saves"])
         layout.addWidget(self.history)
+        self.pin_filter = QComboBox()
+        self.pin_filter.currentIndexChanged.connect(self.refresh_chart)
+        layout.addWidget(self.pin_filter)
+        self.metric_filter = QComboBox()
+        for title, index in (("Impressions", 1), ("Outbound clicks", 2), ("Saves", 3)):
+            self.metric_filter.addItem(title, index)
+        self.metric_filter.currentIndexChanged.connect(self.refresh_chart)
+        layout.addWidget(self.metric_filter)
+        self.chart = MetricsChart()
+        layout.addWidget(self.chart)
+        self.ranking = QTableWidget(0, 6)
+        self.ranking.setHorizontalHeaderLabels(["Pin ID", "Title", "Impressions", "Clicks", "Saves", "Outbound CTR %"])
+        layout.addWidget(self.ranking)
         self.refresh()
 
     def import_csv(self):
@@ -79,3 +94,26 @@ class AnalyticsPage(QWidget):
             for j, value in enumerate(row):
                 self.history.setItem(i, j, QTableWidgetItem(str(value)))
         self.history.resizeColumnsToContents()
+        ranking = pin_performance(self.storage)
+        self.ranking.setRowCount(len(ranking))
+        for i, item in enumerate(ranking):
+            rate = "N/A" if item["ctr"] is None else format(item["ctr"], ".2f")
+            values = (item["pin_id"], item["title"], item["impressions"], item["outbound_clicks"], item["saves"], rate)
+            for j, value in enumerate(values):
+                self.ranking.setItem(i, j, QTableWidgetItem(str(value)))
+        self.ranking.resizeColumnsToContents()
+        selected = self.pin_filter.currentData()
+        self.pin_filter.blockSignals(True)
+        self.pin_filter.clear()
+        self.pin_filter.addItem("All imported pins", None)
+        for item in ranking:
+            self.pin_filter.addItem("#{} — {}".format(item["pin_id"], item["title"]), item["pin_id"])
+        self.pin_filter.setCurrentIndex(max(0, self.pin_filter.findData(selected)))
+        self.pin_filter.blockSignals(False)
+        self.refresh_chart()
+
+    def refresh_chart(self):
+        if not hasattr(self, "chart"):
+            return
+        self.chart.set_data(daily_performance(self.storage, self.pin_filter.currentData()),
+                            self.metric_filter.currentData() or 1)
