@@ -150,6 +150,7 @@ class Storage:
         # Historical product attribution: never guess a product for legacy entries.
         time_columns = {row[1] for row in self.conn.execute("PRAGMA table_info(time_entries)")}
         for column, declaration in {
+            "pin_id": "INTEGER REFERENCES pins(id)",
             "product_id_snapshot": "INTEGER",
             "product_name_snapshot": "TEXT",
             "attribution_known": "INTEGER NOT NULL DEFAULT 0",
