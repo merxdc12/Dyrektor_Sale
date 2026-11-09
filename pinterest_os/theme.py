@@ -62,6 +62,20 @@ def stylesheet(mode: str) -> str:
         color: %(text)s; border: 1px solid %(border)s; border-radius: 7px;
         padding: 8px; min-height: 22px; selection-background-color: %(accent)s; }
     QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus { border: 2px solid %(accent)s; }
+    /* TIME: distinguish selected controls from the actual applied attribution. */
+    QLineEdit#TimeTaskInput, QComboBox#TimePinSelection,
+    QComboBox#TimeCurrencySelection {
+        border: 2px solid %(accent)s; background: %(surface)s;
+        min-height: 28px; }
+    QLabel#TimeActiveSelection {
+        color: %(accent)s; font-size: 14px; font-weight: 800;
+        background: %(surface)s; border-left: 4px solid %(accent)s;
+        padding: 8px 12px; }
+    QComboBox QAbstractItemView {
+        selection-background-color: %(accent)s;
+        selection-color: %(accent_text)s; }
+    QTableWidget::item:selected, QTableView::item:selected {
+        background: %(accent)s; color: %(accent_text)s; }
     QTableWidget, QTableView { font-size: 14px; background: %(surface)s; alternate-background-color: %(elevated)s;
         gridline-color: %(border)s; border: 1px solid %(border)s;
         selection-background-color: %(hover)s; selection-color: %(text)s; }
