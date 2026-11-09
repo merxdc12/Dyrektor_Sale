@@ -3,7 +3,8 @@ from pathlib import Path
 import webbrowser
 from urllib.parse import urlparse
 from PyQt6.QtCore import QSettings
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QComboBox, QPushButton, QLineEdit, QFormLayout, QGroupBox
+from .google_sheets_link import parse_sheet_url, preview_public_sheet
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QComboBox, QPushButton, QLineEdit, QFormLayout, QGroupBox, QPlainTextEdit
 
 
 class SettingsPage(QWidget):
@@ -51,6 +52,28 @@ class SettingsPage(QWidget):
         google_login.clicked.connect(lambda: webbrowser.open("https://drive.google.com/"))
         form.addRow(google_login)
         layout.addWidget(accounts)
+        sheets = QGroupBox("Google Sheets — selected spreadsheet")
+        sheet_form = QFormLayout(sheets)
+        self.sheet_url = QLineEdit()
+        self.sheet_url.setPlaceholderText("https://docs.google.com/spreadsheets/d/.../edit#gid=0")
+        self.sheet_url.setText(self.preferences.value("sheets/url", "", str))
+        sheet_form.addRow("Spreadsheet URL", self.sheet_url)
+        self.sheet_status = QLabel(
+            "No Google authorization. Public CSV preview only; private sheets "
+            "and writing require a separate authorized integration.")
+        self.sheet_status.setWordWrap(True)
+        sheet_form.addRow(self.sheet_status)
+        save_sheet = QPushButton("Validate and save link")
+        save_sheet.clicked.connect(self.save_sheet_link)
+        sheet_form.addRow(save_sheet)
+        preview_sheet = QPushButton("Preview public sheet (read-only)")
+        preview_sheet.clicked.connect(self.preview_sheet)
+        sheet_form.addRow(preview_sheet)
+        self.sheet_preview = QPlainTextEdit()
+        self.sheet_preview.setReadOnly(True)
+        self.sheet_preview.setMaximumHeight(120)
+        sheet_form.addRow(self.sheet_preview)
+        layout.addWidget(sheets)
         layout.addWidget(QLabel("Workspace diagnostics (read-only)"))
         self.diagnostics = QLabel()
         self.diagnostics.setWordWrap(True)
@@ -109,3 +132,38 @@ class SettingsPage(QWidget):
         self.account_status.setText(
             "Local account identifiers saved. Sign in separately in the browser; "
             "no passwords, OAuth tokens or automatic Drive access are stored.")
+
+    def save_sheet_link(self):
+        value = self.sheet_url.text().strip()
+        if not value:
+            self.sheet_status.setText("Enter a spreadsheet URL; existing link not changed.")
+            return
+        try:
+            spreadsheet_id, gid = parse_sheet_url(value)
+        except ValueError as exc:
+            self.sheet_status.setText(str(exc))
+            return
+        self.preferences.setValue("sheets/url", value)
+        self.preferences.sync()
+        if self.preferences.status() != QSettings.Status.NoError:
+            self.sheet_status.setText("Could not save spreadsheet URL.")
+            return
+        self.sheet_status.setText(
+            f"Link saved locally (sheet gid={gid}). Access not yet tested. "
+            "This does not grant permission to read or write.")
+
+    def preview_sheet(self):
+        value = self.sheet_url.text().strip()
+        self.sheet_preview.clear()
+        try:
+            rows = preview_public_sheet(value)
+        except Exception as exc:
+            self.sheet_status.setText(
+                f"Public preview unavailable: {type(exc).__name__}: {exc}. "
+                "Private sheets require authorization.")
+            return
+        self.sheet_preview.setPlainText(
+            "\\n".join(" | ".join(cell[:100] for cell in row[:12]) for row in rows))
+        self.sheet_status.setText(
+            f"Read-only public CSV preview: {len(rows)} rows shown (up to 10). "
+            "No records imported or modified.")
