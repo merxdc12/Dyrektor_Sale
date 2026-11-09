@@ -285,6 +285,30 @@ class Storage:
         if not self.get("pins", pin_id):
             raise ValueError("Pin does not exist")
 
+    def schedule_conflicts(self, scheduled_at: str, board_id: int | None,
+                           exclude_entry_id: int | None = None) -> list[dict]:
+        """Same board and minute; advisory only, including unassigned pins."""
+        self.conn.row_factory = sqlite3.Row
+        try:
+            rows = self.conn.execute(
+                """SELECT s.id, s.pin_id, p.title, s.status
+                   FROM pin_schedule AS s JOIN pins AS p ON p.id=s.pin_id
+                   WHERE s.scheduled_at=? AND p.board_id IS ?
+                     AND s.status!='CANCELLED' AND s.id!=?
+                   ORDER BY s.id""",
+                (scheduled_at, board_id, exclude_entry_id if exclude_entry_id is not None else -1)
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            self.conn.row_factory = None
+
+    def calendar_summary(self, start: str, end: str, board_id: int | None = None) -> dict[str, int]:
+        rows = self.schedules_between(start, end, board_id)
+        summary = {state: 0 for state in ("PLANNED", "READY", "PUBLISHED", "CANCELLED")}
+        for row in rows:
+            summary[row["status"]] += 1
+        return summary
+
     def create_schedule(self, pin_id: int, scheduled_at: str, status: str = "PLANNED") -> int:
         self._validate_schedule(pin_id, scheduled_at, status)
         with self.conn:
