@@ -312,9 +312,14 @@ class Storage:
             cursor = self.conn.execute("INSERT INTO work_sessions(started_at) VALUES(?)", (utc_now(),))
         return int(cursor.lastrowid)
 
-    def save_elapsed(self, session_id: int, seconds: int, task: str = "General") -> None:
+    def save_elapsed(self, session_id: int, seconds: int, task: str = "General",
+                     pin_id: int | None = None) -> None:
         if seconds <= 0:
             return
+        if not task.strip():
+            raise ValueError("Task name is required")
+        if pin_id is not None and not self.get("pins", pin_id):
+            raise ValueError("Unknown pin ID")
         with self.conn:
             cursor = self.conn.execute(
                 "UPDATE work_sessions SET active_seconds=active_seconds+? WHERE id=? AND ended_at IS NULL",
@@ -322,8 +327,8 @@ class Storage:
             )
             if cursor.rowcount:
                 self.conn.execute(
-                    "INSERT INTO time_entries(session_id,task,seconds,created_at) VALUES(?,?,?,?)",
-                    (session_id, task, seconds, utc_now()),
+                    "INSERT INTO time_entries(session_id,task,pin_id,seconds,created_at) VALUES(?,?,?,?,?)",
+                    (session_id, task.strip(), pin_id, seconds, utc_now()),
                 )
 
     def end_session(self, session_id: int) -> None:
