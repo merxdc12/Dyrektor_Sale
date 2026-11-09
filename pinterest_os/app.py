@@ -398,6 +398,7 @@ class MainWindow(QMainWindow):
         self.pin_designer.storage = target
         self.pin_designer.reload_pins()
         self.pin_designer._loading = True
+        self.pin_designer.dirty = False
         try:
             self.pin_designer.apply_template()
         finally:
