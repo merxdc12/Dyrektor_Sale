@@ -48,6 +48,16 @@ def stylesheet(mode: str) -> str:
     QPushButton#NavButton:checked { background: %(accent)s; color: %(accent_text)s;
         border: 1px solid %(accent)s; border-radius: 6px; font-weight: 800; }
     QPushButton#NavButton:checked:hover { background: %(accent)s; color: %(accent_text)s; }
+    QTabWidget::pane { border: 1px solid %(border)s; border-radius: 8px;
+        background: %(bg)s; }
+    QTabBar::tab { background: %(elevated)s; color: %(text)s;
+        border: 1px solid %(border)s; border-bottom: none;
+        border-top-left-radius: 7px; border-top-right-radius: 7px;
+        min-height: 28px; min-width: 95px; padding: 7px 12px;
+        font-size: 14px; font-weight: 600; }
+    QTabBar::tab:hover:!selected { background: %(hover)s; }
+    QTabBar::tab:selected { background: %(accent)s; color: %(accent_text)s;
+        border: 1px solid %(accent)s; font-weight: 800; }
     QLineEdit, QPlainTextEdit, QComboBox, QSpinBox { background: %(surface)s;
         color: %(text)s; border: 1px solid %(border)s; border-radius: 7px;
         padding: 8px; min-height: 22px; selection-background-color: %(accent)s; }
