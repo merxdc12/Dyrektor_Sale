@@ -8,6 +8,19 @@ from pinterest_os.carousel_logic import export_carousel, validate_slides
 from pinterest_os.storage import Storage
 
 
+def make_png(width, height):
+    import struct
+    import zlib
+    def chunk(name, payload):
+        return (struct.pack(">I", len(payload)) + name + payload
+                + struct.pack(">I", zlib.crc32(name + payload) & 0xffffffff))
+    header = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
+    raw = b"".join(b"\\x00" + b"\\x00\\x00\\x00\\xff" * width for _ in range(height))
+    return (bytes.fromhex("89504e470d0a1a0a")
+            + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(raw))
+            + chunk(b"IEND", b""))
+
+
 def test_carousel_order_and_zip(tmp_path):
     db = Storage(tmp_path / "project.sqlite3")
     try:
@@ -20,7 +33,7 @@ def test_carousel_order_and_zip(tmp_path):
         slides = db.carousel_slides(carousel)
         for slide in slides:
             png = tmp_path / f'{slide["pin_id"]}.png'
-            png.write_bytes(bytes.fromhex("89504e470d0a1a0a") + (13).to_bytes(4, "big") + b"IHDR" + (1000).to_bytes(4, "big") + (1500).to_bytes(4, "big") + bytes([8, 6, 0, 0, 0]) + b"\x00\x00\x00\x00")
+            png.write_bytes(make_png(2, 3))
             db.save_pin_design(slide["pin_id"], '{"version":1}', str(png))
         slides = db.carousel_slides(carousel)
         assert validate_slides(slides) == []
@@ -48,12 +61,8 @@ def test_carousel_rejects_duplicates_and_missing_assets(tmp_path):
 def test_rejects_mismatched_dimensions_and_invalid_png(tmp_path):
     first = tmp_path / "first.png"
     second = tmp_path / "second.png"
-    def header(width, height):
-        return (bytes.fromhex("89504e470d0a1a0a") + (13).to_bytes(4, "big")
-                + b"IHDR" + width.to_bytes(4, "big") + height.to_bytes(4, "big")
-                + bytes([8, 6, 0, 0, 0]) + bytes(4))
-    first.write_bytes(header(1000, 1500))
-    second.write_bytes(header(800, 1200))
+    first.write_bytes(make_png(2, 3))
+    second.write_bytes(make_png(3, 2))
     slides = [{"pin_id": 1, "png_path": str(first)},
               {"pin_id": 2, "png_path": str(second)}]
     assert any("different dimensions" in issue for issue in validate_slides(slides))
