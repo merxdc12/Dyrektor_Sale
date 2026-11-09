@@ -21,7 +21,10 @@ No Pinterest API, no automatic posting, no scheduled synchronization.
 - Private-sheet access is granted by Google OAuth, not by a pasted link alone.
 - **Import selected worksheet as NEW pins** requires headers `title,description,destination_url,status,board,product`; referenced boards and products must already exist locally. Imported `PUBLISHED` is only a local label, never remote verification.
 - **Export pins / TIME entries / imported Pinterest metrics** creates separate new Google worksheets, after explicit confirmation.
-- The current integration does **not** update existing Google rows, resolve edit conflicts, import metrics from Google Sheets, or synchronize automatically.
+- **Import NEW Pinterest metrics** accepts `date,pin_id,impressions,outbound_clicks,saves`. Local pin IDs must exist. Existing date/pin pairs are rejected, not overwritten. These are imported claims, not verified Pinterest analytics.
+- Re-importing identical pin metadata is rejected; different metadata may still represent the same remote pin. Stable cross-system IDs and full bidirectional synchronization are not implemented.
+- The current integration does **not** update existing Google rows, resolve cross-system edit conflicts, or synchronize automatically.
+- GitHub Actions workflow `pinterest-os-tests.yml` compiles Python and runs offline pytest on pushes. Check the Actions result before calling the build tested.
 - Disconnect deletes locally stored credentials; separately revoke Google authorization from Google Account security settings if needed.
 
 ## Security and limits
