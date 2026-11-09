@@ -169,7 +169,7 @@ class MainWindow(QMainWindow):
                 body.addWidget(selector)
                 content.addWidget(panel)
             elif name == "TIME":
-                self.time_page = TimePage(self.storage)
+                self.time_page = TimePage(self.storage, on_change=self.record_elapsed)
                 content.addWidget(self.time_page, 1)
             elif name == "ANALYTICS":
                 self.analytics_page = AnalyticsPage(self.storage)
@@ -425,7 +425,7 @@ class MainWindow(QMainWindow):
         self.reports_page.refresh()
         self.time_page.storage = target
         self.time_page.set_current(0)
-        self.time_page.refresh()
+        self.time_page.reset_attribution()
         for table in self.tables:
             self.refresh(table)
         self.project_label.setText("Active: " + str(folder))
@@ -886,7 +886,9 @@ class MainWindow(QMainWindow):
             elapsed = max(0, int(now - self.last_tick))
             if elapsed:
                 self.active_seconds += elapsed
-                self.storage.save_elapsed(self.session_id, elapsed)
+                self.storage.save_elapsed(self.session_id, elapsed,
+                                          self.time_page.active_task,
+                                          self.time_page.active_pin_id)
                 self.last_tick += elapsed
         else:
             self.last_tick = now
