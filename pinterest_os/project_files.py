@@ -41,8 +41,9 @@ def _asset_source(value: str, folder: Path) -> Path:
     return path.resolve()
 
 
-def _copy_assets(db: sqlite3.Connection, folder: Path) -> None:
+def _copy_assets(db: sqlite3.Connection, folder: Path, source_root: Path | None = None) -> None:
     """Collect referenced files and store only project-relative asset paths."""
+    source_root = source_root or folder
     folder_assets = folder / "assets"
     folder_assets.mkdir(exist_ok=True)
     rows = db.execute("SELECT pin_id,project_json,png_path FROM pin_designs").fetchall()
@@ -52,7 +53,7 @@ def _copy_assets(db: sqlite3.Connection, folder: Path) -> None:
         for index, layer in enumerate(project.get("layers", [])):
             if layer.get("kind") != "image" or not layer.get("path"):
                 continue
-            source = _asset_source(layer["path"], folder)
+            source = _asset_source(layer["path"], source_root)
             if not source.is_file():
                 raise FileNotFoundError(f"Missing image asset: {source}")
             extension = source.suffix.lower()
@@ -64,7 +65,7 @@ def _copy_assets(db: sqlite3.Connection, folder: Path) -> None:
                 shutil.copy2(source, destination)
             layer["path"] = relative
         if png:
-            source = _asset_source(png, folder)
+            source = _asset_source(png, source_root)
             if not source.is_file():
                 raise FileNotFoundError(f"Missing exported PNG: {source}")
             relative = f"assets/pin-{pin_id}-export.png"
@@ -117,7 +118,8 @@ def create_project(source: sqlite3.Connection, destination: str | Path) -> Path:
         backup_database(source, staged / DB_NAME)
         db = sqlite3.connect(staged / DB_NAME)
         try:
-            _copy_assets(db, staged)
+            source_db = Path(source.execute("PRAGMA database_list").fetchone()[2]).resolve()
+            _copy_assets(db, staged, source_db.parent)
         finally:
             db.close()
         (staged / MANIFEST).write_text(
