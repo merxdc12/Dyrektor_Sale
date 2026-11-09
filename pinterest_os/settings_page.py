@@ -4,7 +4,11 @@ import webbrowser
 from urllib.parse import urlparse
 from PyQt6.QtCore import QSettings
 from .google_sheets_link import parse_sheet_url, preview_public_sheet
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QComboBox, QPushButton, QLineEdit, QFormLayout, QGroupBox, QPlainTextEdit
+from . import sheets_api
+from .product_io import validate_products, COLUMNS
+from .reports import report_rows, FIELDS as REPORT_FIELDS
+from datetime import datetime, timezone
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QComboBox, QPushButton, QLineEdit, QFormLayout, QGroupBox, QPlainTextEdit, QFileDialog, QMessageBox
 
 
 class SettingsPage(QWidget):
@@ -73,6 +77,29 @@ class SettingsPage(QWidget):
         self.sheet_preview.setReadOnly(True)
         self.sheet_preview.setMaximumHeight(120)
         sheet_form.addRow(self.sheet_preview)
+        connect_google = QPushButton("Connect Google (OAuth desktop)")
+        connect_google.clicked.connect(self.connect_google)
+        sheet_form.addRow(connect_google)
+        disconnect_google = QPushButton("Disconnect Google (local credentials)")
+        disconnect_google.clicked.connect(self.disconnect_google)
+        sheet_form.addRow(disconnect_google)
+        self.sheet_tab = QComboBox()
+        sheet_form.addRow("Authorized worksheet", self.sheet_tab)
+        list_tabs = QPushButton("List authorized worksheets")
+        list_tabs.clicked.connect(self.list_google_tabs)
+        sheet_form.addRow(list_tabs)
+        preview_private = QPushButton("Preview selected private worksheet")
+        preview_private.clicked.connect(self.preview_private)
+        sheet_form.addRow(preview_private)
+        import_products = QPushButton("Import selected worksheet as NEW products")
+        import_products.clicked.connect(self.import_google_products)
+        sheet_form.addRow(import_products)
+        export_products = QPushButton("Export products to NEW worksheet")
+        export_products.clicked.connect(lambda: self.export_google("products"))
+        sheet_form.addRow(export_products)
+        export_reports = QPushButton("Export USD report to NEW worksheet")
+        export_reports.clicked.connect(lambda: self.export_google("reports"))
+        sheet_form.addRow(export_reports)
         layout.addWidget(sheets)
         layout.addWidget(QLabel("Workspace diagnostics (read-only)"))
         self.diagnostics = QLabel()
@@ -167,3 +194,131 @@ class SettingsPage(QWidget):
         self.sheet_status.setText(
             f"Read-only public CSV preview: {len(rows)} rows shown (up to 10). "
             "No records imported or modified.")
+
+    def _google_id(self):
+        return parse_sheet_url(self.sheet_url.text().strip())[0]
+
+    def _google_error(self, exc):
+        self.sheet_status.setText(f"Google Sheets operation failed: {type(exc).__name__}: {exc}")
+
+    def connect_google(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select Google OAuth Desktop client JSON", "",
+            "JSON files (*.json)")
+        if not path:
+            return
+        try:
+            sheets_api.connect(path)
+        except Exception as exc:
+            self._google_error(exc)
+            return
+        self.sheet_status.setText("Google OAuth completed. Credentials stored in OS keyring.")
+
+    def disconnect_google(self):
+        try:
+            sheets_api.disconnect()
+        except Exception as exc:
+            self._google_error(exc)
+            return
+        self.sheet_tab.clear()
+        self.sheet_status.setText("Local Google credentials removed. Revoke app access in Google separately.")
+
+    def list_google_tabs(self):
+        try:
+            tabs = sheets_api.worksheets(self._google_id())
+        except Exception as exc:
+            self._google_error(exc)
+            return
+        self.sheet_tab.clear()
+        for gid, title in tabs:
+            self.sheet_tab.addItem(title, gid)
+        self.sheet_status.setText(f"Authorized access: {len(tabs)} worksheets found.")
+
+    def _selected_title(self):
+        if self.sheet_tab.currentIndex() < 0:
+            raise ValueError("List worksheets and select one first")
+        return self.sheet_tab.currentText()
+
+    def preview_private(self):
+        try:
+            rows = sheets_api.read_rows(self._google_id(), self._selected_title(), limit=20)
+        except Exception as exc:
+            self._google_error(exc)
+            return
+        self.sheet_preview.setPlainText(
+            "\\n".join(" | ".join(str(cell)[:100] for cell in row[:12]) for row in rows[:10]))
+        self.sheet_status.setText(f"Authorized preview: {len(rows[:10])} rows shown; no changes made.")
+
+    def import_google_products(self):
+        try:
+            rows = sheets_api.read_rows(self._google_id(), self._selected_title())
+            if not rows:
+                raise ValueError("Worksheet is empty")
+            headers = rows[0]
+            if set(headers) != set(COLUMNS) or len(headers) != len(COLUMNS):
+                raise ValueError("Expected exactly name, category, target_url columns")
+            records = [
+                dict(zip(headers, [*row, *([""] * (len(headers) - len(row)))]))
+                for row in rows[1:]
+            ]
+            records = validate_products(records)
+            existing = {r["name"].casefold() for r in self.storage.all("products")}
+            if len({r["name"].casefold() for r in records}) != len(records):
+                raise ValueError("Duplicate product names in worksheet")
+            if any(r["name"].casefold() in existing for r in records):
+                raise ValueError("Existing product name conflict; import cancelled")
+        except Exception as exc:
+            self._google_error(exc)
+            return
+        answer = QMessageBox.question(
+            self, "Confirm Google Sheets import",
+            f"Create {len(records)} NEW local products? Existing products are not modified.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            from .storage import utc_now
+            with self.storage.conn:
+                for record in records:
+                    self.storage.conn.execute(
+                        "INSERT INTO products(name,category,target_url,created_at) VALUES(?,?,?,?)",
+                        (record["name"], record["category"], record["target_url"], utc_now()))
+            self.sheet_status.setText(f"Imported {len(records)} new products.")
+            window = self.window()
+            if hasattr(window, "refresh") and hasattr(window, "tables"):
+                window.refresh("products")
+        except Exception as exc:
+            self._google_error(exc)
+
+    def export_google(self, kind):
+        try:
+            spreadsheet_id = self._google_id()
+            if kind == "products":
+                headers = COLUMNS
+                records = [{k: row.get(k, "") for k in headers}
+                           for row in self.storage.all("products")]
+            elif kind == "reports":
+                headers = REPORT_FIELDS
+                records = report_rows(self.storage, "USD")
+            else:
+                raise ValueError("Unknown export type")
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            title = f"ITHutir_{kind}_{stamp}"
+        except Exception as exc:
+            self._google_error(exc)
+            return
+        answer = QMessageBox.question(
+            self, "Confirm export to Google",
+            f"Create a NEW Google worksheet '{title}' with {len(records)} rows? "
+            "This sends data to Google; existing worksheets are not overwritten.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            _, count = sheets_api.create_export_tab(spreadsheet_id, title, headers, records)
+            self.sheet_status.setText(f"Exported {count} rows to new worksheet '{title}'.")
+            self.list_google_tabs()
+        except Exception as exc:
+            self._google_error(exc)
