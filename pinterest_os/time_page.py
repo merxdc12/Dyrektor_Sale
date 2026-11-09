@@ -23,18 +23,17 @@ def time_summary(storage):
 
 
 def product_time_summary(storage, currency=None):
-    """Historical time grouped by CURRENT pin-to-product assignment.
+    """Use immutable write-time product attribution; legacy entries remain unknown.
 
-    Unassigned time is visible, not distributed. Current rate is an estimate,
-    not a historical payroll cost.
+    Current hourly rate is an estimate, never historical payroll evidence.
     """
     rows = storage.conn.execute(
-        """SELECT p.product_id, COALESCE(pr.name,'Unassigned'),
-                  COUNT(DISTINCT t.pin_id), SUM(t.seconds)
-           FROM time_entries t
-           LEFT JOIN pins p ON p.id=t.pin_id
-           LEFT JOIN products pr ON pr.id=p.product_id
-           GROUP BY p.product_id ORDER BY pr.name, p.product_id"""
+        """SELECT attribution_known, product_id_snapshot,
+                  COALESCE(product_name_snapshot, 'Unassigned'),
+                  COUNT(DISTINCT pin_id), SUM(seconds)
+           FROM time_entries
+           GROUP BY attribution_known, product_id_snapshot, product_name_snapshot
+           ORDER BY attribution_known DESC, product_name_snapshot"""
     ).fetchall()
     rate = None
     if currency:
@@ -44,11 +43,14 @@ def product_time_summary(storage, currency=None):
         if found:
             rate = found[0]
     result = []
-    for product_id, name, pin_count, seconds in rows:
+    for known, product_id, name, pin_count, seconds in rows:
+        if not known:
+            name = "Unknown historical attribution (legacy)"
         cents = None if rate is None else int(
             (Decimal(seconds) * Decimal(rate) / Decimal(3600)).quantize(
                 Decimal("1"), rounding=ROUND_HALF_UP))
-        result.append({"product_id": product_id, "product_name": name,
+        result.append({"product_id": product_id if known else None,
+                       "product_name": name, "attribution_known": bool(known),
                        "pins": pin_count, "seconds": seconds, "labor_cents": cents})
     return result
 
@@ -89,7 +91,7 @@ class TimePage(QWidget):
         self.table.setHorizontalHeaderLabels(["Task", "Tracked time", "Entries"])
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         layout.addWidget(self.table)
-        layout.addWidget(QLabel("Product time and estimated labor (current pin assignments):"))
+        layout.addWidget(QLabel("Product time and estimated labor (historical snapshots; legacy unknown):"))
         self.currency = QComboBox()
         layout.addWidget(self.currency)
         self.products_table = QTableWidget(0, 4)
