@@ -126,17 +126,21 @@ class MainWindow(QMainWindow):
         nav_frame.setObjectName("Navigation")
         nav = QHBoxLayout(nav_frame)
         nav.setContentsMargins(10, 8, 10, 8)
-        nav.setSpacing(5)
+        nav.setSpacing(8)
+        navigation_width = 20
         for name in MENU:
             button = QPushButton(name)
             button.setObjectName("NavButton")
-            if name == "CALENDAR":
-                button.setMinimumWidth(140)
+            # Keep every label readable; scroll horizontally instead of squeezing tabs.
+            button_width = max(92, button.fontMetrics().horizontalAdvance(name) + 52)
+            button.setFixedWidth(button_width)
+            navigation_width += button_width + 8
             button.setCheckable(True)
             button.clicked.connect(lambda checked=False, item=name: self.open_page(item))
             nav.addWidget(button)
             self.nav_buttons[name] = button
         nav.addStretch()
+        nav_frame.setMinimumWidth(navigation_width + 12)
         navigation.setWidget(nav_frame)
         outer.addWidget(navigation)
 
