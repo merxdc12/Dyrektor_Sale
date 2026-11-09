@@ -51,6 +51,8 @@ class SettingsPage(QWidget):
         self.preferences = QSettings("ITHutir", "PinterestOS")
         accounts = QGroupBox("Accounts — browser sign-in (no stored passwords)")
         form = QFormLayout(accounts)
+        form.setVerticalSpacing(12)
+        form.setHorizontalSpacing(14)
         self.pinterest_email = QLineEdit()
         self.pinterest_email.setText(self.preferences.value("accounts/pinterest_email", "", str))
         self.pinterest_email.setPlaceholderText("Pinterest account email")
@@ -82,6 +84,8 @@ class SettingsPage(QWidget):
         accounts_layout.addStretch(1)
         sheets = QGroupBox("Google Sheets — selected spreadsheet")
         sheet_form = QFormLayout(sheets)
+        sheet_form.setVerticalSpacing(12)
+        sheet_form.setHorizontalSpacing(14)
         self.sheet_url = QLineEdit()
         self.sheet_url.setPlaceholderText("https://docs.google.com/spreadsheets/d/.../edit#gid=0")
         self.sheet_url.setText(self.preferences.value("sheets/url", "", str))
@@ -148,10 +152,12 @@ class SettingsPage(QWidget):
         refresh = QPushButton("Refresh diagnostics")
         refresh.clicked.connect(self.refresh)
         diagnostics_layout.addWidget(refresh)
-        diagnostics_layout.addWidget(QLabel(
+        diagnostics_note = QLabel(
             "Data stays in the local SQLite workspace. No Pinterest API, "
             "automatic posting or paid advertising. Financial labor rates "
-            "are configured in ANALYTICS; time is recorded in TIME."))
+            "are configured in ANALYTICS; time is recorded in TIME.")
+        diagnostics_note.setWordWrap(True)
+        diagnostics_layout.addWidget(diagnostics_note)
         diagnostics_layout.addStretch(1)
         self.refresh()
 
