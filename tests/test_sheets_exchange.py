@@ -25,6 +25,9 @@ def test_pin_exchange_and_rejection(tmp_path):
         with pytest.raises(ValueError, match="unknown board"):
             parse_pin_rows([list(PIN_FIELDS),
                             ["Bad", "", "", "DRAFT", "Unknown", ""]], db)
+        with pytest.raises(ValueError, match="PUBLISHED"):
+            parse_pin_rows([list(PIN_FIELDS),
+                            ["Not verified", "", "", "PUBLISHED", "", ""]], db)
         assert len(db.all("pins")) == 1
         assert export_time_rows(db) == []
         assert export_metric_rows(db) == []
