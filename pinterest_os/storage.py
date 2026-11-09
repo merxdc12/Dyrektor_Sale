@@ -220,6 +220,30 @@ class Storage:
         finally:
             self.conn.row_factory = None
 
+
+    def schedules_between(self, start: str, end: str, board_id: int | None = None) -> list[dict]:
+        """Inclusive ISO calendar-day range; board filter uses linked pin's board."""
+        from datetime import date
+        if date.fromisoformat(start) > date.fromisoformat(end):
+            raise ValueError("Start date must not exceed end date")
+        params = [start, end + "T23:59"]
+        where = "s.scheduled_at BETWEEN ? AND ?"
+        if board_id is not None:
+            where += " AND p.board_id=?"
+            params.append(board_id)
+        self.conn.row_factory = sqlite3.Row
+        try:
+            return [dict(row) for row in self.conn.execute(
+                f"""SELECT s.*, p.title, p.board_id, b.name AS board_name
+                    FROM pin_schedule s
+                    JOIN pins p ON p.id=s.pin_id
+                    LEFT JOIN boards b ON b.id=p.board_id
+                    WHERE {where}
+                    ORDER BY s.scheduled_at, s.id""", params
+            )]
+        finally:
+            self.conn.row_factory = None
+
     def delete_schedule(self, entry_id: int) -> bool:
         with self.conn:
             cursor = self.conn.execute("DELETE FROM pin_schedule WHERE id=?", (entry_id,))
