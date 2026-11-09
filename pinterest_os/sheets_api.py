@@ -4,15 +4,11 @@ Credentials are stored in the operating-system keyring, not SQLite or QSettings.
 Requires google-auth-oauthlib, google-api-python-client, keyring.
 """
 from __future__ import annotations
-import csv
-import io
 import json
-import re
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 SERVICE = "ITHutir-PinterestOS-GoogleSheets"
 ACCOUNT = "oauth-credentials"
-TAB = re.compile(r"^[^\\[\\]*?/\\?:]{1,100}$")
 
 
 def _dependencies():
