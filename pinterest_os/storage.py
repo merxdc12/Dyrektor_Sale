@@ -155,6 +155,28 @@ class Storage:
         finally:
             self.conn.row_factory = None
 
+    def search_products(self, query: str = "", category: str = "ALL") -> list[dict]:
+        if category not in {"ALL", "POD", "KDP", "DIGITAL", "FREE_TOOL", "OTHER"}:
+            raise ValueError("Invalid product category filter")
+        query = query.strip().casefold()
+        return [
+            row for row in self.all("products")
+            if (category == "ALL" or row["category"] == category)
+            and (not query or any(query in str(row[key]).casefold()
+                                  for key in ("name", "category", "target_url")))
+        ]
+
+    def product_pin_count(self, product_id: int) -> int:
+        return int(self.conn.execute(
+            "SELECT COUNT(*) FROM pins WHERE product_id=?", (product_id,)
+        ).fetchone()[0])
+
+    def delete_product(self, product_id: int) -> bool:
+        """Remove product only; linked pins survive with NULL product_id."""
+        with self.conn:
+            result = self.conn.execute("DELETE FROM products WHERE id=?", (product_id,))
+        return result.rowcount > 0
+
     def add_board(self, name: str, url: str = "") -> int:
         return self.create("boards", name=name, url=url)
 
