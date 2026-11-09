@@ -6,6 +6,7 @@ from .analytics_import import import_metrics, metric_history
 from .analytics_metrics import daily_performance, pin_performance, group_performance
 from .analytics_chart import MetricsChart
 from .business_metrics import import_business_metrics, business_summary
+from .profit_panel import ProfitCostsPanel
 
 
 def operational_summary(storage):
@@ -81,6 +82,8 @@ class AnalyticsPage(QWidget):
         self.business_table = QTableWidget(0, 7)
         self.business_table.setHorizontalHeaderLabels(["Pin", "Site visits", "Conversions", "Conversion %", "Revenue", "Reported costs", "Contribution"])
         layout.addWidget(self.business_table)
+        self.profit_costs = ProfitCostsPanel(storage)
+        layout.addWidget(self.profit_costs)
         self.refresh()
 
     def import_csv(self):
@@ -175,6 +178,8 @@ class AnalyticsPage(QWidget):
         self.business_currency.setCurrentIndex(max(0, self.business_currency.findData(selected_currency)))
         self.business_currency.blockSignals(False)
         self.refresh_business()
+        self.profit_costs.storage = self.storage
+        self.profit_costs.refresh()
 
     def refresh_groups(self):
         if not hasattr(self, "groups"):
