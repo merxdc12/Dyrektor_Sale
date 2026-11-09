@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
 
 from .board_logic import CATEGORIES, board_plan, board_seo_issues
 from .calendar import CalendarPage
+from .publishing import PublishingPage
 from .editor import RecordEditor
 from .designer import PinDesigner
 from .csv_io import import_pins, export_pins
@@ -168,14 +169,8 @@ class MainWindow(QMainWindow):
                 body.addWidget(self.time_metric)
                 content.addWidget(panel)
             elif name == "PUBLISHING":
-                panel, body = card()
-                body.addWidget(label("Manual publishing", "Heading"))
-                body.addWidget(label("Prepare pins locally, then publish in your browser. No API or auto-posting.", "Muted"))
-                browser = QPushButton("Open Pinterest ↗")
-                browser.setObjectName("Primary")
-                browser.clicked.connect(lambda: webbrowser.open("https://www.pinterest.com/"))
-                body.addWidget(browser)
-                content.addWidget(panel)
+                self.publishing_page = PublishingPage(self.storage)
+                content.addWidget(self.publishing_page, 1)
             elif name == "HELP":
                 panel, body = card()
                 body.addWidget(label("Getting started", "Heading"))
@@ -411,6 +406,8 @@ class MainWindow(QMainWindow):
         self.pin_designer.canva_id.clear()
         self.calendar_page.storage = target
         self.calendar_page.refresh()
+        self.publishing_page.storage = target
+        self.publishing_page.refresh()
         for table in self.tables:
             self.refresh(table)
         self.project_label.setText("Active: " + str(folder))
