@@ -1,7 +1,7 @@
 """Offline operational analytics; never presents local status as Pinterest performance."""
 from collections import Counter
 
-from PyQt6.QtWidgets import QComboBox, QFileDialog, QLabel, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QLineEdit
+from PyQt6.QtWidgets import QComboBox, QFileDialog, QLabel, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QLineEdit, QTabWidget, QScrollArea
 from .analytics_import import import_metrics, metric_history
 from .analytics_metrics import daily_performance, pin_performance, group_performance
 from .analytics_chart import MetricsChart
@@ -34,7 +34,28 @@ class AnalyticsPage(QWidget):
     def __init__(self, storage, parent=None):
         super().__init__(parent)
         self.storage = storage
-        layout = QVBoxLayout(self)
+        root = QVBoxLayout(self)
+        tabs = QTabWidget()
+        root.addWidget(tabs)
+
+        def make_tab(name):
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            container = QWidget()
+            column = QVBoxLayout(container)
+            column.setContentsMargins(14, 14, 14, 14)
+            column.setSpacing(12)
+            scroll.setWidget(container)
+            tabs.addTab(scroll, name)
+            return column
+
+        overview = make_tab("Overview")
+        metrics = make_tab("Pinterest Metrics")
+        boards = make_tab("Boards")
+        business = make_tab("Business")
+        profitability = make_tab("Profitability")
+        decisions = make_tab("Decisions")
+        layout = overview
         layout.addWidget(QLabel(
             "LOCAL OPERATIONS ONLY — not Pinterest impressions, clicks, saves, or revenue. "
             "Published means manually confirmed in this app, not verified remotely."))
@@ -43,13 +64,18 @@ class AnalyticsPage(QWidget):
         layout.addWidget(refresh)
         self.table = QTableWidget(0, 2)
         self.table.setHorizontalHeaderLabels(["Metric", "Local count"])
+        self.table.setMinimumHeight(240)
+        self.table.verticalHeader().setDefaultSectionSize(36)
         layout.addWidget(self.table)
+        layout = metrics
         layout.addWidget(QLabel("CSV columns: date,pin_id,impressions,outbound_clicks,saves (local pin IDs)."))
         button = QPushButton("Import metrics CSV")
         button.clicked.connect(self.import_csv)
         layout.addWidget(button)
         self.history = QTableWidget(0, 4)
         self.history.setHorizontalHeaderLabels(["Date", "Impressions", "Outbound clicks", "Saves"])
+        self.history.setMinimumHeight(240)
+        self.history.verticalHeader().setDefaultSectionSize(36)
         layout.addWidget(self.history)
         self.pin_filter = QComboBox()
         self.pin_filter.currentIndexChanged.connect(self.refresh_chart)
@@ -63,7 +89,10 @@ class AnalyticsPage(QWidget):
         layout.addWidget(self.chart)
         self.ranking = QTableWidget(0, 6)
         self.ranking.setHorizontalHeaderLabels(["Pin ID", "Title", "Impressions", "Clicks", "Saves", "Outbound CTR %"])
+        self.ranking.setMinimumHeight(240)
+        self.ranking.verticalHeader().setDefaultSectionSize(36)
         layout.addWidget(self.ranking)
+        layout = boards
         layout.addWidget(QLabel("Board / category performance — imported data only."))
         layout.addWidget(QLabel("Attribution uses CURRENT pin-board assignments; changing boards reattributes past metrics."))
         self.group_selector = QComboBox()
@@ -73,7 +102,10 @@ class AnalyticsPage(QWidget):
         layout.addWidget(self.group_selector)
         self.groups = QTableWidget(0, 6)
         self.groups.setHorizontalHeaderLabels(["Board / category", "Pins with data", "Impressions", "Outbound clicks", "Saves", "Outbound CTR %"])
+        self.groups.setMinimumHeight(240)
+        self.groups.verticalHeader().setDefaultSectionSize(36)
         layout.addWidget(self.groups)
+        layout = business
         layout.addWidget(QLabel("BUSINESS: explicitly attributed data only. Contribution = revenue minus REPORTED costs; not verified net profit."))
         layout.addWidget(QLabel("CSV: date,pin_id,currency,site_visits,conversions,revenue,cost. No inferred sales from Pinterest clicks."))
         business_button = QPushButton("Import business CSV")
@@ -84,17 +116,25 @@ class AnalyticsPage(QWidget):
         layout.addWidget(self.business_currency)
         self.business_table = QTableWidget(0, 7)
         self.business_table.setHorizontalHeaderLabels(["Pin", "Site visits", "Conversions", "Conversion %", "Revenue", "Reported costs", "Contribution"])
+        self.business_table.setMinimumHeight(240)
+        self.business_table.verticalHeader().setDefaultSectionSize(36)
         layout.addWidget(self.business_table)
         self.profit_costs = ProfitCostsPanel(storage)
         layout.addWidget(self.profit_costs)
+        layout = profitability
         layout.addWidget(QLabel("PRODUCT PROFITABILITY — estimated contribution, NOT verified net profit."))
         layout.addWidget(QLabel("Current product assignments; unassigned entries remain separate. Avoid double-counting imported and ledger costs."))
         self.product_table = QTableWidget(0, 8)
         self.product_table.setHorizontalHeaderLabels(["Product", "Revenue", "Reported cost", "Direct cost", "Allocated cost", "Labor estimate", "Estimated contribution", "ROI %"])
+        self.product_table.setMinimumHeight(240)
+        self.product_table.verticalHeader().setDefaultSectionSize(36)
         layout.addWidget(self.product_table)
+        layout = decisions
         layout.addWidget(QLabel("DECISION SUPPORT — policy heuristics, not predictions. SCALE is a candidate for manual review; STOP is never automatic."))
         self.decision_table = QTableWidget(0, 4)
         self.decision_table.setHorizontalHeaderLabels(["Product", "Recommendation", "Evidence", "Reason"])
+        self.decision_table.setMinimumHeight(240)
+        self.decision_table.verticalHeader().setDefaultSectionSize(36)
         layout.addWidget(self.decision_table)
         self.review_selector = QComboBox()
         layout.addWidget(self.review_selector)
@@ -110,6 +150,8 @@ class AnalyticsPage(QWidget):
         layout.addWidget(review_button)
         self.integrity_label = QLabel("Financial reconciliation status: not checked")
         layout.addWidget(self.integrity_label)
+        for column in (overview, metrics, boards, business, profitability, decisions):
+            column.addStretch(1)
         self.refresh()
 
     def import_csv(self):
