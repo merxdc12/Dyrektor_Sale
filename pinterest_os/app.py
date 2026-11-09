@@ -130,6 +130,8 @@ class MainWindow(QMainWindow):
         for name in MENU:
             button = QPushButton(name)
             button.setObjectName("NavButton")
+            if name == "CALENDAR":
+                button.setMinimumWidth(100)
             button.setCheckable(True)
             button.clicked.connect(lambda checked=False, item=name: self.open_page(item))
             nav.addWidget(button)
