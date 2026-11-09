@@ -1,7 +1,7 @@
 """Offline operational analytics; never presents local status as Pinterest performance."""
 from collections import Counter
 
-from PyQt6.QtWidgets import QComboBox, QFileDialog, QLabel, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QComboBox, QFileDialog, QLabel, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QLineEdit
 from .analytics_import import import_metrics, metric_history
 from .analytics_metrics import daily_performance, pin_performance, group_performance
 from .analytics_chart import MetricsChart
@@ -9,7 +9,7 @@ from .business_metrics import import_business_metrics, business_summary
 from .profit_panel import ProfitCostsPanel
 from .product_profitability import product_profitability
 from .product_decisions import decision_report
-from .financial_integrity import reconciliation_flags
+from .financial_integrity import reconciliation_flags, record_review
 
 
 def operational_summary(storage):
@@ -96,6 +96,18 @@ class AnalyticsPage(QWidget):
         self.decision_table = QTableWidget(0, 4)
         self.decision_table.setHorizontalHeaderLabels(["Product", "Recommendation", "Evidence", "Reason"])
         layout.addWidget(self.decision_table)
+        self.review_selector = QComboBox()
+        layout.addWidget(self.review_selector)
+        self.review_decision = QComboBox()
+        self.review_decision.addItem("Separate expenses (DISTINCT)", "DISTINCT")
+        self.review_decision.addItem("Ledger already included in CSV (DUPLICATE)", "DUPLICATE")
+        layout.addWidget(self.review_decision)
+        self.review_note = QLineEdit()
+        self.review_note.setPlaceholderText("Required review reason / evidence")
+        layout.addWidget(self.review_note)
+        review_button = QPushButton("Save reconciliation review")
+        review_button.clicked.connect(self.save_reconciliation_review)
+        layout.addWidget(review_button)
         self.integrity_label = QLabel("Financial reconciliation status: not checked")
         layout.addWidget(self.integrity_label)
         self.refresh()
@@ -197,6 +209,20 @@ class AnalyticsPage(QWidget):
         self.profit_costs.refresh()
         self.refresh_products()
 
+    def save_reconciliation_review(self):
+        key = self.review_selector.currentData()
+        if not key:
+            QMessageBox.warning(self, "Review", "Select a cost overlap.")
+            return
+        currency, day, pin_id = key
+        try:
+            record_review(self.storage, currency, day, pin_id,
+                          self.review_decision.currentData(), self.review_note.text())
+        except ValueError as exc:
+            QMessageBox.warning(self, "Review failed", str(exc))
+            return
+        self.refresh_products()
+
     def refresh_products(self):
         currency = self.business_currency.currentData() or self.profit_costs.currency.text().strip().upper()
         try:
@@ -222,11 +248,19 @@ class AnalyticsPage(QWidget):
                 self.decision_table.setItem(i, j, QTableWidgetItem(str(value)))
         self.decision_table.resizeColumnsToContents()
         flags = reconciliation_flags(self.storage, currency)
+        self.review_selector.clear()
+        for flag in flags:
+            self.review_selector.addItem(
+                "{} / pin #{} / CSV {:.2f} / ledger {:.2f} / {}".format(
+                    flag["date"], flag["pin_id"], flag["reported_cost_cents"] / 100,
+                    flag["ledger_cost_cents"] / 100, flag["decision"] or "UNREVIEWED"),
+                (currency, flag["date"], flag["pin_id"]))
+        pending = sum(flag["decision"] is None for flag in flags)
         if flags:
             self.integrity_label.setText(
-                "RECONCILIATION REQUIRED: {} possible CSV/ledger overlaps. "
-                "Affected products have no ROI or SCALE recommendation. "
-                "Review date, pin and source records.".format(len(flags)))
+                "Cost overlaps: {} total, {} unresolved. Only unresolved overlaps block ROI. "
+                "DUPLICATE excludes all matching ledger entries from calculated costs; "
+                "DISTINCT counts both sources.".format(len(flags), pending))
         else:
             self.integrity_label.setText(
                 "No matching date/pin CSV-ledger overlaps detected. "
