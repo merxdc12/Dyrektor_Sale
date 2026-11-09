@@ -8,7 +8,7 @@ from . import sheets_api, sheets_exchange
 from .product_io import validate_products, COLUMNS
 from .reports import report_rows, FIELDS as REPORT_FIELDS
 from datetime import datetime, timezone
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QComboBox, QPushButton, QLineEdit, QFormLayout, QGroupBox, QPlainTextEdit, QFileDialog, QMessageBox
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QComboBox, QPushButton, QLineEdit, QFormLayout, QGroupBox, QPlainTextEdit, QFileDialog, QMessageBox, QTabWidget, QScrollArea
 
 
 class SettingsPage(QWidget):
@@ -16,7 +16,29 @@ class SettingsPage(QWidget):
         super().__init__(parent)
         self.storage = storage
         self.theme = theme
-        layout = QVBoxLayout(self)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        tabs = QTabWidget(self)
+        tabs.setObjectName("SettingsSubtabs")
+        root.addWidget(tabs)
+
+        def make_tab(name):
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+            panel = QWidget()
+            column = QVBoxLayout(panel)
+            column.setContentsMargins(14, 14, 14, 14)
+            column.setSpacing(12)
+            scroll.setWidget(panel)
+            tabs.addTab(scroll, name)
+            return column
+
+        appearance_layout = make_tab("Appearance")
+        accounts_layout = make_tab("Accounts")
+        sheets_layout = make_tab("Google Sheets")
+        diagnostics_layout = make_tab("Diagnostics")
+        layout = appearance_layout
         layout.addWidget(QLabel("Appearance"))
         self.theme_selector = QComboBox()
         self.theme_selector.setAccessibleName("Application color theme")
@@ -55,7 +77,9 @@ class SettingsPage(QWidget):
         google_login = QPushButton("Open Google Drive in browser")
         google_login.clicked.connect(lambda: webbrowser.open("https://drive.google.com/"))
         form.addRow(google_login)
-        layout.addWidget(accounts)
+        appearance_layout.addStretch(1)
+        accounts_layout.addWidget(accounts)
+        accounts_layout.addStretch(1)
         sheets = QGroupBox("Google Sheets — selected spreadsheet")
         sheet_form = QFormLayout(sheets)
         self.sheet_url = QLineEdit()
@@ -75,7 +99,8 @@ class SettingsPage(QWidget):
         sheet_form.addRow(preview_sheet)
         self.sheet_preview = QPlainTextEdit()
         self.sheet_preview.setReadOnly(True)
-        self.sheet_preview.setMaximumHeight(120)
+        self.sheet_preview.setMinimumHeight(180)
+        self.sheet_preview.setMaximumHeight(280)
         sheet_form.addRow(self.sheet_preview)
         connect_google = QPushButton("Connect Google (OAuth desktop)")
         connect_google.clicked.connect(self.connect_google)
@@ -114,19 +139,20 @@ class SettingsPage(QWidget):
             button = QPushButton(caption)
             button.clicked.connect(lambda checked=False, item=kind: self.export_google(item))
             sheet_form.addRow(button)
-        layout.addWidget(sheets)
-        layout.addWidget(QLabel("Workspace diagnostics (read-only)"))
+        sheets_layout.addWidget(sheets)
+        sheets_layout.addStretch(1)
+        diagnostics_layout.addWidget(QLabel("Workspace diagnostics (read-only)"))
         self.diagnostics = QLabel()
         self.diagnostics.setWordWrap(True)
-        layout.addWidget(self.diagnostics)
+        diagnostics_layout.addWidget(self.diagnostics)
         refresh = QPushButton("Refresh diagnostics")
         refresh.clicked.connect(self.refresh)
-        layout.addWidget(refresh)
-        layout.addWidget(QLabel(
+        diagnostics_layout.addWidget(refresh)
+        diagnostics_layout.addWidget(QLabel(
             "Data stays in the local SQLite workspace. No Pinterest API, "
             "automatic posting or paid advertising. Financial labor rates "
             "are configured in ANALYTICS; time is recorded in TIME."))
-        layout.addStretch()
+        diagnostics_layout.addStretch(1)
         self.refresh()
 
     def change_theme(self, index):
@@ -204,7 +230,7 @@ class SettingsPage(QWidget):
                 "Private sheets require authorization.")
             return
         self.sheet_preview.setPlainText(
-            "\\n".join(" | ".join(cell[:100] for cell in row[:12]) for row in rows))
+            "\n".join(" | ".join(cell[:100] for cell in row[:12]) for row in rows))
         self.sheet_status.setText(
             f"Read-only public CSV preview: {len(rows)} rows shown (up to 10). "
             "No records imported or modified.")
