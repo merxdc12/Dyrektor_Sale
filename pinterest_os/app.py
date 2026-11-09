@@ -18,6 +18,7 @@ from .editor import RecordEditor
 from .designer import PinDesigner
 from .csv_io import import_pins, export_pins
 from .storage import Storage
+from .workspace import backup_database, verify_database
 from .theme import ThemeManager
 
 MENU = ("FILE", "PIN", "BOARD", "CALENDAR", "PUBLISHING",
@@ -133,6 +134,8 @@ class MainWindow(QMainWindow):
                     content.addWidget(tabs, 1)
                 else:
                     self.build_catalog(content, table)
+                    if name == "FILE":
+                        self.build_file_tools(content)
             elif name == "CALENDAR":
                 self.calendar_page = CalendarPage(self.storage)
                 content.addWidget(self.calendar_page, 1)
@@ -205,6 +208,38 @@ class MainWindow(QMainWindow):
         self.tick_timer.timeout.connect(self.tick)
         self.tick_timer.start(1000)
         self.render_timer()
+
+    def build_file_tools(self, content: QVBoxLayout) -> None:
+        panel, body = card()
+        body.addWidget(label("Workspace safety", "Heading"))
+        body.addWidget(label(
+            "SQLite backup only. External images and design assets are NOT included.", "Muted"))
+        actions = QHBoxLayout()
+        backup = QPushButton("Create database backup")
+        backup.clicked.connect(self.backup_workspace)
+        actions.addWidget(backup)
+        verify = QPushButton("Verify database integrity")
+        verify.clicked.connect(self.verify_workspace)
+        actions.addWidget(verify)
+        body.addLayout(actions)
+        content.addWidget(panel)
+
+    def backup_workspace(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Create SQLite backup", "ithutir-pinterest-backup.sqlite3",
+            "SQLite database (*.sqlite3)")
+        if not path:
+            return
+        try:
+            saved = backup_database(self.storage.conn, path)
+            QMessageBox.information(self, "Backup verified", f"Database backup: {saved}")
+        except (OSError, ValueError, RuntimeError) as exc:
+            QMessageBox.warning(self, "Backup failed", str(exc))
+
+    def verify_workspace(self) -> None:
+        ok, reason = verify_database(self.storage.path)
+        title = "Database integrity OK" if ok else "Database integrity failed"
+        (QMessageBox.information if ok else QMessageBox.warning)(self, title, reason)
 
     def build_catalog(self, content: QVBoxLayout, table: str) -> None:
         panel, body = card()
