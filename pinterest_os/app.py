@@ -7,6 +7,7 @@ import webbrowser
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QStandardPaths, QTimer, QSettings
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFrame, QHBoxLayout, QHeaderView, QLabel,
     QMainWindow, QMessageBox, QPushButton, QScrollArea, QFileDialog, QTabWidget, QLineEdit,
@@ -98,9 +99,20 @@ class MainWindow(QMainWindow):
         header, head = card()
         header.setObjectName("Header")
         row = QHBoxLayout()
-        row.addWidget(label("ITHUTIR  /  PINTEREST OS", "Brand"))
+        brand_title = label("PINTEREST OS", "Brand")
+        brand_title.setWordWrap(False)
+        row.addWidget(brand_title)
+        brand_logo = QLabel()
+        logo_path = Path(__file__).parent / "assets" / "ithutir-logo.png"
+        logo = QPixmap(str(logo_path))
+        if not logo.isNull():
+            brand_logo.setPixmap(logo.scaledToHeight(38, Qt.TransformationMode.SmoothTransformation))
+            brand_logo.setFixedHeight(40)
+            row.addWidget(brand_logo)
         row.addStretch()
-        row.addWidget(label("●  OFFLINE FIRST   •   ORGANIC ONLY", "Muted"))
+        header_status = label("● OFFLINE FIRST  •  ORGANIC ONLY", "HeaderStatus")
+        header_status.setWordWrap(False)
+        row.addWidget(header_status)
         head.addLayout(row)
         outer.addWidget(header)
 
