@@ -511,6 +511,12 @@ class MainWindow(QMainWindow):
         refresh.clicked.connect(lambda checked=False, t=table: self.refresh(t))
         actions.addWidget(refresh)
         if table == "pins":
+            duplicate = QPushButton("Duplicate as draft")
+            duplicate.clicked.connect(self.duplicate_selected_pin)
+            actions.addWidget(duplicate)
+            remove = QPushButton("Delete pin")
+            remove.clicked.connect(self.delete_selected_pin)
+            actions.addWidget(remove)
             import_button = QPushButton("Import CSV")
             import_button.clicked.connect(self.import_csv)
             actions.addWidget(import_button)
@@ -528,6 +534,18 @@ class MainWindow(QMainWindow):
             export_button.clicked.connect(self.export_product_file)
             actions.addWidget(export_button)
         body.addLayout(actions)
+        if table == "pins":
+            filters = QHBoxLayout()
+            self.pin_search = QLineEdit()
+            self.pin_search.setPlaceholderText("Search title, description or destination URL")
+            self.pin_search.textChanged.connect(lambda _: self.refresh("pins"))
+            filters.addWidget(self.pin_search)
+            self.pin_status = QComboBox()
+            for status in ("ALL", "DRAFT", "IN_REVIEW", "READY", "PUBLISHED"):
+                self.pin_status.addItem(status, status)
+            self.pin_status.currentIndexChanged.connect(lambda _: self.refresh("pins"))
+            filters.addWidget(self.pin_status)
+            body.addLayout(filters)
         if table == "products":
             filters = QHBoxLayout()
             search = QLineEdit()
@@ -554,6 +572,47 @@ class MainWindow(QMainWindow):
         body.addWidget(grid)
         content.addWidget(panel, 1)
         self.tables[table] = grid
+
+    def selected_pin_id(self) -> int | None:
+        grid = self.tables["pins"]
+        row = grid.currentRow()
+        item = grid.item(row, 0) if row >= 0 else None
+        return int(item.text()) if item else None
+
+    def duplicate_selected_pin(self) -> None:
+        pin_id = self.selected_pin_id()
+        if pin_id is None:
+            QMessageBox.information(self, "Select pin", "Select a pin first.")
+            return
+        try:
+            copied = self.storage.duplicate_pin(pin_id)
+            self.refresh("pins")
+            self.pin_designer.reload_pins()
+            QMessageBox.information(self, "Draft created", f"Created draft pin #{copied}.")
+        except (ValueError, OSError) as exc:
+            QMessageBox.warning(self, "Duplicate failed", str(exc))
+
+    def delete_selected_pin(self) -> None:
+        pin_id = self.selected_pin_id()
+        if pin_id is None:
+            QMessageBox.information(self, "Select pin", "Select a pin first.")
+            return
+        record = self.storage.get("pins", pin_id)
+        if record is None:
+            return
+        answer = QMessageBox.question(
+            self, "Delete pin?",
+            f"Delete pin #{pin_id}: {record['title']}?\n"
+            "Its saved design and calendar entries will also be deleted. "
+            "Exported image files will NOT be deleted. This cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.storage.delete_pin(pin_id)
+        self.refresh("pins")
+        self.pin_designer.reload_pins()
+        self.calendar_page.refresh()
 
     def selected_product_id(self) -> int | None:
         grid = self.tables["products"]
@@ -634,7 +693,9 @@ class MainWindow(QMainWindow):
     def refresh(self, table: str) -> None:
         grid = self.tables[table]
         rows = (self.storage.search_products(self.product_search.text(), self.product_category.currentData())
-                if table == "products" else self.storage.all(table))
+                if table == "products" else
+                self.storage.search_pins(self.pin_search.text(), self.pin_status.currentData())
+                if table == "pins" else self.storage.all(table))
         fields = {
             "products": ("id", "name", "category", "target_url"),
             "boards": ("id", "name", "url", "description"),
