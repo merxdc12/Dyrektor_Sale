@@ -147,12 +147,9 @@ class MainWindow(QMainWindow):
             content.setSpacing(16)
             title, subtitle = TITLES[name]
             if name == "FILE":
-                heading_row = QHBoxLayout()
-                heading_row.setSpacing(12)
-                heading_row.addWidget(label(title, "Heading"))
-                heading_row.addWidget(label(subtitle, "Muted"))
-                heading_row.addStretch()
-                content.addLayout(heading_row)
+                workspace_heading = label("Workspace — Products and content destinations", "WorkspaceHeading")
+                workspace_heading.setWordWrap(False)
+                content.addWidget(workspace_heading)
             else:
                 content.addWidget(label(title, "Heading"))
                 content.addWidget(label(subtitle, "Muted"))
