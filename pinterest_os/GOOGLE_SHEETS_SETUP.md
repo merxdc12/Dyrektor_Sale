@@ -19,7 +19,9 @@ No Pinterest API, no automatic posting, no scheduled synchronization.
 - **Export products to NEW worksheet** creates a fresh tab; existing tabs are not overwritten.
 - **Export USD report to NEW worksheet** creates a fresh tab with estimated metrics. It does not claim verified net profit.
 - Private-sheet access is granted by Google OAuth, not by a pasted link alone.
-- The current integration does **not** import pins, export time records, update existing Google rows, resolve edit conflicts, or synchronize automatically.
+- **Import selected worksheet as NEW pins** requires headers `title,description,destination_url,status,board,product`; referenced boards and products must already exist locally. Imported `PUBLISHED` is only a local label, never remote verification.
+- **Export pins / TIME entries / imported Pinterest metrics** creates separate new Google worksheets, after explicit confirmation.
+- The current integration does **not** update existing Google rows, resolve edit conflicts, import metrics from Google Sheets, or synchronize automatically.
 - Disconnect deletes locally stored credentials; separately revoke Google authorization from Google Account security settings if needed.
 
 ## Security and limits
