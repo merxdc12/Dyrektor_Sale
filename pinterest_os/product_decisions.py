@@ -8,7 +8,8 @@ from .product_profitability import product_profitability
 
 
 def evaluate_product(item, *, min_visits=100, min_conversions=5):
-    reasons = []
+    if item["product_id"] is None:
+        return {"decision": "TEST", "reason": "Unassigned product or costs; attribution incomplete.", "evidence": "INCOMPLETE"}
     if item["labor_cents"] is None:
         return {"decision": "TEST", "reason": "Hourly labor rate missing; contribution/ROI unknown.",
                 "evidence": "INCOMPLETE"}
@@ -19,7 +20,7 @@ def evaluate_product(item, *, min_visits=100, min_conversions=5):
     contribution = item["estimated_contribution_cents"]
     if contribution > 0:
         return {"decision": "SCALE",
-                "reason": "Positive estimated contribution with minimum observed activity; validate attribution and costs before investment.",
+                "reason": "SCALE CANDIDATE ONLY: positive estimated contribution and minimum observed activity. Verify full costs, attribution and repeatability before investment.",
                 "evidence": "THRESHOLD_MET"}
     if contribution == 0:
         return {"decision": "OPTIMIZE",
