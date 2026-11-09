@@ -29,7 +29,7 @@ def stylesheet(mode: str) -> str:
     QMainWindow, QDialog { background: %(bg)s; }
     QFrame#Card, QFrame#Navigation, QFrame#Header { background: %(surface)s;
         border: 1px solid %(border)s; border-radius: 12px; }
-    QLabel#Brand { color: %(accent)s; font-size: 22px; font-weight: 800; }
+    QLabel#Brand { color: %(accent)s; font-size: 18px; font-weight: 800; }\n    QLabel#HeaderStatus { color: %(muted)s; font-size: 10px; font-weight: 500; }
     QLabel#Heading { font-size: 21px; font-weight: 700; }
     QLabel#Muted { color: %(muted)s; }
     QLabel#Metric { font-size: 25px; font-weight: 700; color: %(accent)s; }
