@@ -9,6 +9,7 @@ from .business_metrics import import_business_metrics, business_summary
 from .profit_panel import ProfitCostsPanel
 from .product_profitability import product_profitability
 from .product_decisions import decision_report
+from .financial_integrity import reconciliation_flags
 
 
 def operational_summary(storage):
@@ -95,6 +96,8 @@ class AnalyticsPage(QWidget):
         self.decision_table = QTableWidget(0, 4)
         self.decision_table.setHorizontalHeaderLabels(["Product", "Recommendation", "Evidence", "Reason"])
         layout.addWidget(self.decision_table)
+        self.integrity_label = QLabel("Financial reconciliation status: not checked")
+        layout.addWidget(self.integrity_label)
         self.refresh()
 
     def import_csv(self):
@@ -218,6 +221,16 @@ class AnalyticsPage(QWidget):
             for j, value in enumerate(values):
                 self.decision_table.setItem(i, j, QTableWidgetItem(str(value)))
         self.decision_table.resizeColumnsToContents()
+        flags = reconciliation_flags(self.storage, currency)
+        if flags:
+            self.integrity_label.setText(
+                "RECONCILIATION REQUIRED: {} possible CSV/ledger overlaps. "
+                "Affected products have no ROI or SCALE recommendation. "
+                "Review date, pin and source records.".format(len(flags)))
+        else:
+            self.integrity_label.setText(
+                "No matching date/pin CSV-ledger overlaps detected. "
+                "This does NOT prove expenses are unique or complete.")
 
     def refresh_groups(self):
         if not hasattr(self, "groups"):
