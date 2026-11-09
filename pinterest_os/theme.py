@@ -25,16 +25,17 @@ def system_theme(app: QApplication) -> str:
 def stylesheet(mode: str) -> str:
     p = PALETTES[mode]
     return """
-    QWidget { background: %(bg)s; color: %(text)s; font-size: 13px; }
+    QWidget { background: %(bg)s; color: %(text)s; font-size: 14px; }
     QMainWindow, QDialog { background: %(bg)s; }
     QFrame#Card, QFrame#Navigation, QFrame#Header { background: %(surface)s;
         border: 1px solid %(border)s; border-radius: 12px; }
     QLabel#Brand { color: %(accent)s; font-size: 18px; font-weight: 800; }\n    QLabel#HeaderStatus { color: %(muted)s; font-size: 10px; font-weight: 500; }
     QLabel#Heading { font-size: 21px; font-weight: 700; }
+    QLabel#SectionHeading { color: %(text)s; font-size: 16px; font-weight: 700; }
     QLabel#Muted { color: %(muted)s; }
     QLabel#Metric { font-size: 25px; font-weight: 700; color: %(accent)s; }
     QPushButton { background: %(elevated)s; border: 1px solid %(border)s;
-        border-radius: 8px; padding: 9px 13px; min-height: 20px; }
+        border-radius: 8px; padding: 7px 12px; min-height: 26px; }
     QPushButton:hover { background: %(hover)s; }
     QPushButton:focus { border: 2px solid %(accent)s; }
     QPushButton:disabled { color: %(muted)s; }
@@ -47,7 +48,7 @@ def stylesheet(mode: str) -> str:
     QPushButton#NavButton:checked:hover { background: %(accent)s; color: %(accent_text)s; }
     QLineEdit, QPlainTextEdit, QComboBox, QSpinBox { background: %(surface)s;
         color: %(text)s; border: 1px solid %(border)s; border-radius: 7px;
-        padding: 8px; selection-background-color: %(accent)s; }
+        padding: 8px; min-height: 22px; selection-background-color: %(accent)s; }
     QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus { border: 2px solid %(accent)s; }
     QTableWidget { background: %(surface)s; alternate-background-color: %(elevated)s;
         gridline-color: %(border)s; border: 1px solid %(border)s;
