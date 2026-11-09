@@ -1,6 +1,10 @@
 """Local publishing calendar. Planning is not automatic Pinterest posting."""
 from __future__ import annotations
 
+from datetime import datetime
+import webbrowser
+from .calendar_logic import filter_entries, is_overdue, publication_checklist
+
 
 from PyQt6.QtCore import QDate, Qt
 from PyQt6.QtGui import QColor, QFont, QTextCharFormat
@@ -151,6 +155,17 @@ class CalendarPage(QWidget):
         self.board.currentIndexChanged.connect(self.refresh)
         controls.addWidget(QLabel("Board:"))
         controls.addWidget(self.board)
+        self.status_filter = QComboBox()
+        self.status_filter.addItem("All statuses", "ALL")
+        for state in STATUS:
+            self.status_filter.addItem(state, state)
+        self.status_filter.currentIndexChanged.connect(self.refresh)
+        controls.addWidget(self.status_filter)
+        self.overdue_filter = QComboBox()
+        self.overdue_filter.addItem("All dates", False)
+        self.overdue_filter.addItem("Overdue only", True)
+        self.overdue_filter.currentIndexChanged.connect(self.refresh)
+        controls.addWidget(self.overdue_filter)
         controls.addStretch()
         add = QPushButton("+ Schedule pin")
         add.setObjectName("Primary")
@@ -180,6 +195,9 @@ class CalendarPage(QWidget):
         remove = QPushButton("Remove from calendar")
         remove.clicked.connect(self.remove_selected)
         actions.addWidget(remove)
+        ready = QPushButton("Publishing checklist")
+        ready.clicked.connect(self.show_publishing_checklist)
+        actions.addWidget(ready)
         actions.addStretch()
         outer.addLayout(actions)
         self.refresh()
@@ -231,6 +249,31 @@ class CalendarPage(QWidget):
         if answer == QMessageBox.StandardButton.Yes:
             self.storage.delete_schedule(entry["id"])
             self.refresh()
+
+    def show_publishing_checklist(self):
+        entry = self.selected_entry()
+        if not entry:
+            return
+        pin = self.storage.get("pins", entry["pin_id"])
+        if not pin:
+            QMessageBox.warning(self, "Missing pin", "The pin no longer exists.")
+            return
+        design = self.storage.get_pin_design(pin["id"])
+        missing = publication_checklist(pin, design)
+        if missing:
+            QMessageBox.information(
+                self, "Manual publishing checklist",
+                "Before opening Pinterest, complete:\\n• " + "\\n• ".join(missing))
+            return
+        answer = QMessageBox.question(
+            self, "Manual publishing checklist",
+            "Metadata, board assignment and PNG path are recorded.\\n"
+            "Confirm the image exists, review the content and publish manually.\\n"
+            "Open Pinterest in your browser? (No automatic posting.)",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer == QMessageBox.StandardButton.Yes:
+            webbrowser.open("https://www.pinterest.com/")
 
     def move_entry(self, entry_id: int, day: str) -> bool:
         entry = self.storage.get_schedule(entry_id)
@@ -284,10 +327,13 @@ class CalendarPage(QWidget):
         start_iso = start.toString("yyyy-MM-dd")
         end_iso = end.toString("yyyy-MM-dd")
         entries = self.storage.schedules_between(start_iso, end_iso, self.board.currentData())
-        summary = self.storage.calendar_summary(start_iso, end_iso, self.board.currentData())
+        entries = filter_entries(entries, self.status_filter.currentData(),
+                                 self.overdue_filter.currentData(), datetime.now())
+        summary = {state: sum(row["status"] == state for row in entries) for state in STATUS}
+        overdue_count = sum(is_overdue(row, datetime.now()) for row in entries)
         counts = "  |  ".join(f"{key}: {value}" for key, value in summary.items())
         self.heading.setText(
-            f"{mode}: {start_iso} — {end_iso}  |  {len(entries)} entries  |  {counts}")
+            f"{mode}: {start_iso} — {end_iso}  |  {len(entries)} entries  |  Overdue: {overdue_count}  |  {counts}")
         if mode == "Week":
             days = [start.addDays(i).toString("yyyy-MM-dd") for i in range(7)]
         elif mode == "Day":
@@ -313,7 +359,9 @@ class CalendarPage(QWidget):
                     item = QTableWidgetItem(str(value))
                     item.setData(Qt.ItemDataRole.UserRole, entry["id"])
                     if j == 4:
-                        item.setForeground(QColor(self.COLORS[entry["status"]]))
+                        item.setForeground(QColor(
+                            "#E26B72" if is_overdue(entry, datetime.now())
+                            else self.COLORS[entry["status"]]))
                     self.grid.setItem(i, j, item)
             else:
                 target = days.index(entry["scheduled_at"][:10])
