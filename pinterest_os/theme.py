@@ -33,6 +33,7 @@ def stylesheet(mode: str) -> str:
     QLabel#Heading { font-size: 21px; font-weight: 700; }
     QLabel#WorkspaceHeading { font-size: 18px; font-weight: 700; }
     QLabel#SectionHeading { color: %(text)s; font-size: 16px; font-weight: 700; }
+    QGroupBox { font-size: 16px; font-weight: 700; padding-top: 12px; }
     QLabel#Muted { color: %(muted)s; }
     QLabel#Metric { font-size: 25px; font-weight: 700; color: %(accent)s; }
     QPushButton { background: %(elevated)s; border: 1px solid %(border)s;
@@ -51,10 +52,10 @@ def stylesheet(mode: str) -> str:
         color: %(text)s; border: 1px solid %(border)s; border-radius: 7px;
         padding: 8px; min-height: 22px; selection-background-color: %(accent)s; }
     QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus { border: 2px solid %(accent)s; }
-    QTableWidget { background: %(surface)s; alternate-background-color: %(elevated)s;
+    QTableWidget, QTableView { font-size: 14px; background: %(surface)s; alternate-background-color: %(elevated)s;
         gridline-color: %(border)s; border: 1px solid %(border)s;
         selection-background-color: %(hover)s; selection-color: %(text)s; }
-    QHeaderView::section { background: %(elevated)s; color: %(text)s;
+    QHeaderView::section { font-size: 14px; min-height: 24px; background: %(elevated)s; color: %(text)s;
         border: 0; border-bottom: 1px solid %(border)s; padding: 10px; font-weight: 700; }
     QStatusBar { background: %(surface)s; color: %(muted)s; }
     QScrollArea { border: none; }
