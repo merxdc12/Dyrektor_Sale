@@ -13,7 +13,7 @@ def test_reports_page_empty_and_project_switch(tmp_path):
     second = Storage(tmp_path / "two.sqlite3")
     try:
         page = ReportsPage(first)
-        assert page.table.rowCount() == 0
+        assert "No financial data" in page.summary.text()
         product = second.create("products", name="Guide")
         pin = second.create("pins", title="Pin", product_id=product)
         with second.conn:
