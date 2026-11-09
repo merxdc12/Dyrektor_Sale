@@ -3,7 +3,7 @@ from collections import Counter
 
 from PyQt6.QtWidgets import QComboBox, QFileDialog, QLabel, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 from .analytics_import import import_metrics, metric_history
-from .analytics_metrics import daily_performance, pin_performance
+from .analytics_metrics import daily_performance, pin_performance, group_performance
 from .analytics_chart import MetricsChart
 
 
@@ -59,6 +59,16 @@ class AnalyticsPage(QWidget):
         self.ranking = QTableWidget(0, 6)
         self.ranking.setHorizontalHeaderLabels(["Pin ID", "Title", "Impressions", "Clicks", "Saves", "Outbound CTR %"])
         layout.addWidget(self.ranking)
+        layout.addWidget(QLabel("Board / category performance — imported data only."))
+        layout.addWidget(QLabel("Attribution uses CURRENT pin-board assignments; changing boards reattributes past metrics."))
+        self.group_selector = QComboBox()
+        self.group_selector.addItem("Boards", "board")
+        self.group_selector.addItem("Board categories", "category")
+        self.group_selector.currentIndexChanged.connect(self.refresh_groups)
+        layout.addWidget(self.group_selector)
+        self.groups = QTableWidget(0, 6)
+        self.groups.setHorizontalHeaderLabels(["Board / category", "Pins with data", "Impressions", "Outbound clicks", "Saves", "Outbound CTR %"])
+        layout.addWidget(self.groups)
         self.refresh()
 
     def import_csv(self):
@@ -111,6 +121,19 @@ class AnalyticsPage(QWidget):
         self.pin_filter.setCurrentIndex(max(0, self.pin_filter.findData(selected)))
         self.pin_filter.blockSignals(False)
         self.refresh_chart()
+        self.refresh_groups()
+
+    def refresh_groups(self):
+        if not hasattr(self, "groups"):
+            return
+        rows = group_performance(self.storage, self.group_selector.currentData() or "board")
+        self.groups.setRowCount(len(rows))
+        for i, item in enumerate(rows):
+            rate = "N/A" if item["ctr"] is None else format(item["ctr"], ".2f")
+            values = (item["name"], item["pins"], item["impressions"], item["outbound_clicks"], item["saves"], rate)
+            for j, value in enumerate(values):
+                self.groups.setItem(i, j, QTableWidgetItem(str(value)))
+        self.groups.resizeColumnsToContents()
 
     def refresh_chart(self):
         if not hasattr(self, "chart"):
