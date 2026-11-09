@@ -42,8 +42,9 @@ def stylesheet(mode: str) -> str:
         border: 1px solid %(accent)s; font-weight: 700; }
     QPushButton#NavButton { text-align: left; padding: 11px 13px; border: none;
         background: transparent; font-weight: 600; }
-    QPushButton#NavButton:checked { background: %(hover)s; color: %(accent)s;
-        border-left: 4px solid %(accent)s; border-radius: 4px; }
+    QPushButton#NavButton:checked { background: %(accent)s; color: %(accent_text)s;
+        border: 1px solid %(accent)s; border-radius: 6px; font-weight: 800; }
+    QPushButton#NavButton:checked:hover { background: %(accent)s; color: %(accent_text)s; }
     QLineEdit, QPlainTextEdit, QComboBox, QSpinBox { background: %(surface)s;
         color: %(text)s; border: 1px solid %(border)s; border-radius: 7px;
         padding: 8px; selection-background-color: %(accent)s; }
