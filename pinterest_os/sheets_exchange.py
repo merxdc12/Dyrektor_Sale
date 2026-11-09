@@ -28,6 +28,8 @@ def parse_pin_rows(rows, storage):
             raise ValueError(f"Row {index}: title required (max 300 chars)")
         if status not in {"DRAFT", "IN_REVIEW", "READY", "PUBLISHED"}:
             raise ValueError(f"Row {index}: invalid status")
+        if status == "PUBLISHED":
+            raise ValueError(f"Row {index}: PUBLISHED cannot be imported as verified; use DRAFT")
         if board and board not in boards:
             raise ValueError(f"Row {index}: unknown board '{board}'")
         if product and product not in products:
