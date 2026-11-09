@@ -2,12 +2,48 @@
 from __future__ import annotations
 
 import json
+import struct
+import zlib
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 
+def png_dimensions(path: Path) -> tuple[int, int]:
+    """Validate complete PNG chunk framing, CRCs and IEND."""
+    data = Path(path).read_bytes()
+    if not data.startswith(bytes.fromhex("89504e470d0a1a0a")):
+        raise ValueError("Invalid PNG signature")
+    pos = 8
+    dimensions = None
+    ended = False
+    while pos + 12 <= len(data):
+        length = int.from_bytes(data[pos:pos + 4], "big")
+        end = pos + 12 + length
+        if end > len(data):
+            raise ValueError("Truncated PNG chunk")
+        chunk_type = data[pos + 4:pos + 8]
+        payload = data[pos + 8:pos + 8 + length]
+        crc = int.from_bytes(data[end - 4:end], "big")
+        if zlib.crc32(chunk_type + payload) & 0xffffffff != crc:
+            raise ValueError("PNG chunk CRC mismatch")
+        if pos == 8:
+            if chunk_type != b"IHDR" or length != 13:
+                raise ValueError("Missing PNG IHDR")
+            dimensions = struct.unpack(">II", payload[:8])
+            if not all(dimensions):
+                raise ValueError("Invalid PNG dimensions")
+        if chunk_type == b"IEND":
+            if length != 0 or end != len(data):
+                raise ValueError("Invalid PNG end")
+            ended = True
+            break
+        pos = end
+    if not ended or dimensions is None:
+        raise ValueError("Missing PNG IEND")
+    return dimensions
+
+
 def validate_slides(slides: list[dict], minimum: int = 2, maximum: int = 10) -> list[str]:
-    """Validate slide count, uniqueness, readable PNG headers and uniform dimensions."""
     errors = []
     if not minimum <= len(slides) <= maximum:
         errors.append(f"Carousel must contain {minimum}–{maximum} slides")
@@ -24,19 +60,9 @@ def validate_slides(slides: list[dict], minimum: int = 2, maximum: int = 10) -> 
             errors.append(f"Slide {index}: file must be PNG")
         else:
             try:
-                with path.open("rb") as handle:
-                    header = handle.read(24)
-                if len(header) < 24 or header[:8] != bytes.fromhex("89504e470d0a1a0a") or header[12:16] != b"IHDR":
-                    errors.append(f"Slide {index}: invalid PNG header")
-                    continue
-                width = int.from_bytes(header[16:20], "big")
-                height = int.from_bytes(header[20:24], "big")
-                if width <= 0 or height <= 0:
-                    errors.append(f"Slide {index}: invalid PNG dimensions")
-                else:
-                    sizes.add((width, height))
-            except OSError as exc:
-                errors.append(f"Slide {index}: cannot read PNG ({exc})")
+                sizes.add(png_dimensions(path))
+            except (OSError, ValueError) as exc:
+                errors.append(f"Slide {index}: {exc}")
     if len(sizes) > 1:
         errors.append("Slides have different dimensions; export all slides at the same size")
     return errors
