@@ -377,6 +377,8 @@ class MainWindow(QMainWindow):
 
     def _switch_project(self, folder: Path) -> None:
         # Open the target before closing the current workspace.
+        if self.project_folder is not None and self.project_folder.resolve() != folder.resolve():
+            save_project(self.storage.conn, self.project_folder)
         target = Storage(folder / DB_NAME)
         old = self.storage
         self.stop_session()
