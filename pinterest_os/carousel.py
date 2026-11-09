@@ -1,0 +1,138 @@
+"""Offline carousel composer from existing exported pin PNG assets."""
+from __future__ import annotations
+
+from pathlib import Path
+
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QComboBox, QFileDialog, QHBoxLayout, QInputDialog, QLabel, QListWidget,
+    QMessageBox, QPushButton, QVBoxLayout, QWidget,
+)
+
+from .carousel_logic import export_carousel, validate_slides
+
+
+class CarouselPage(QWidget):
+    def __init__(self, storage, parent=None):
+        super().__init__(parent)
+        self.storage = storage
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Create an ordered multi-image carousel from existing pin PNGs. Manual upload only."))
+        header = QHBoxLayout()
+        self.carousel = QComboBox()
+        self.carousel.currentIndexChanged.connect(self.reload_slides)
+        header.addWidget(self.carousel)
+        new = QPushButton("+ New carousel")
+        new.clicked.connect(self.create_carousel)
+        header.addWidget(new)
+        layout.addLayout(header)
+        self.slides = QListWidget()
+        layout.addWidget(self.slides)
+        buttons = QHBoxLayout()
+        for name, callback in (
+            ("Add pin", self.add_pin), ("Remove", self.remove_pin),
+            ("Move up", lambda: self.move_slide(-1)),
+            ("Move down", lambda: self.move_slide(1)),
+            ("Export ordered ZIP", self.export_zip),
+        ):
+            button = QPushButton(name)
+            button.clicked.connect(callback)
+            buttons.addWidget(button)
+        layout.addLayout(buttons)
+        self.reload_carousels()
+
+    def reload_carousels(self):
+        current = self.carousel.currentData()
+        self.carousel.blockSignals(True)
+        self.carousel.clear()
+        for row in self.storage.list_carousels():
+            self.carousel.addItem(row["title"], row["id"])
+        index = self.carousel.findData(current)
+        self.carousel.setCurrentIndex(index if index >= 0 else 0)
+        self.carousel.blockSignals(False)
+        self.reload_slides()
+
+    def reload_slides(self):
+        self.slides.clear()
+        carousel_id = self.carousel.currentData()
+        if carousel_id is None:
+            return
+        for row in self.storage.carousel_slides(carousel_id):
+            label = f'{row["position"]:02d} — {row["title"]}'
+            if not row.get("png_path") or not Path(row["png_path"]).is_file():
+                label += "  [PNG missing]"
+            self.slides.addItem(label)
+
+    def create_carousel(self):
+        title, ok = QInputDialog.getText(self, "New carousel", "Carousel title:")
+        if ok and title.strip():
+            carousel_id = self.storage.create_carousel(title)
+            self.reload_carousels()
+            self.carousel.setCurrentIndex(self.carousel.findData(carousel_id))
+
+    def _ids(self):
+        return [row["pin_id"] for row in self.storage.carousel_slides(self.carousel.currentData())]
+
+    def add_pin(self):
+        carousel_id = self.carousel.currentData()
+        if carousel_id is None:
+            QMessageBox.information(self, "Create carousel", "Create a carousel first.")
+            return
+        existing = self._ids()
+        options = [(f'#{p["id"]} — {p["title"]}', p["id"])
+                   for p in self.storage.all("pins") if p["id"] not in existing]
+        if not options:
+            QMessageBox.information(self, "No pins", "No additional pins available.")
+            return
+        choice, ok = QInputDialog.getItem(self, "Add pin", "Choose pin:",
+                                          [name for name, _ in options], 0, False)
+        if ok:
+            selected = dict(options)[choice]
+            try:
+                self.storage.set_carousel_slides(carousel_id, existing + [selected])
+            except ValueError as exc:
+                QMessageBox.warning(self, "Cannot add pin", str(exc))
+                return
+            self.reload_slides()
+
+    def remove_pin(self):
+        row = self.slides.currentRow()
+        if row < 0:
+            return
+        ids = self._ids()
+        ids.pop(row)
+        self.storage.set_carousel_slides(self.carousel.currentData(), ids)
+        self.reload_slides()
+
+    def move_slide(self, offset):
+        row = self.slides.currentRow()
+        ids = self._ids()
+        target = row + offset
+        if row < 0 or target < 0 or target >= len(ids):
+            return
+        ids[row], ids[target] = ids[target], ids[row]
+        self.storage.set_carousel_slides(self.carousel.currentData(), ids)
+        self.reload_slides()
+        self.slides.setCurrentRow(target)
+
+    def export_zip(self):
+        carousel_id = self.carousel.currentData()
+        if carousel_id is None:
+            QMessageBox.information(self, "Create carousel", "Create a carousel first.")
+            return
+        slides = self.storage.carousel_slides(carousel_id)
+        errors = validate_slides(slides)
+        if errors:
+            QMessageBox.warning(self, "Carousel not ready", "\n".join(errors))
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Export carousel", "carousel.zip",
+                                               "ZIP archive (*.zip)")
+        if not path:
+            return
+        try:
+            export_carousel(slides, Path(path), self.carousel.currentText())
+        except (ValueError, OSError) as exc:
+            QMessageBox.warning(self, "Export failed", str(exc))
+            return
+        QMessageBox.information(self, "Carousel exported",
+                                "Ordered PNGs and manifest saved. Upload manually where supported.")
