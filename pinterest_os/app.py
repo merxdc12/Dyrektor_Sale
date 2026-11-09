@@ -10,7 +10,7 @@ from PyQt6.QtCore import Qt, QStandardPaths, QTimer
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFrame, QHBoxLayout, QHeaderView, QLabel,
     QMainWindow, QMessageBox, QPushButton, QScrollArea, QFileDialog, QTabWidget, QLineEdit,
-    QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QInputDialog,
 )
 
 from .calendar import CalendarPage
@@ -20,6 +20,8 @@ from .csv_io import import_pins, export_pins
 from .storage import Storage
 from .workspace import backup_database, verify_database
 from .product_io import import_products, export_products
+from .project_files import (DB_NAME, MANIFEST, create_project, save_project,
+                            verify_project, backup_project, restore_project)
 from .theme import ThemeManager
 
 MENU = ("FILE", "PIN", "BOARD", "CALENDAR", "PUBLISHING",
@@ -65,6 +67,8 @@ class MainWindow(QMainWindow):
     def __init__(self, storage: Storage, theme: ThemeManager):
         super().__init__()
         self.storage, self.theme = storage, theme
+        self.project_folder = (storage.path.parent if storage.path.name == DB_NAME
+                               and (storage.path.parent / MANIFEST).exists() else None)
         self.session_id = storage.start_session()
         self.active_seconds = 0
         self.paused = False
@@ -211,6 +215,31 @@ class MainWindow(QMainWindow):
         self.render_timer()
 
     def build_file_tools(self, content: QVBoxLayout) -> None:
+        projects, project_body = card()
+        project_body.addWidget(label("Project management", "Heading"))
+        self.project_label = label("Active: " + (str(self.project_folder) if self.project_folder else "Default workspace"))
+        project_body.addWidget(self.project_label)
+        project_actions = QHBoxLayout()
+        for caption, action in (
+            ("New Project", self.new_project),
+            ("Open Project", self.open_project),
+            ("Save Project", self.save_active_project),
+            ("Save As", self.save_as_project),
+        ):
+            button = QPushButton(caption)
+            button.clicked.connect(action)
+            project_actions.addWidget(button)
+        project_body.addLayout(project_actions)
+        archive_actions = QHBoxLayout()
+        for caption, action in (
+            ("Full ZIP backup", self.backup_full_project),
+            ("Restore ZIP to new folder", self.restore_full_project),
+        ):
+            button = QPushButton(caption)
+            button.clicked.connect(action)
+            archive_actions.addWidget(button)
+        project_body.addLayout(archive_actions)
+        content.addWidget(projects)
         panel, body = card()
         body.addWidget(label("Workspace safety", "Heading"))
         body.addWidget(label(
@@ -224,6 +253,112 @@ class MainWindow(QMainWindow):
         actions.addWidget(verify)
         body.addLayout(actions)
         content.addWidget(panel)
+
+    def _choose_new_folder(self, title: str) -> Path | None:
+        parent = QFileDialog.getExistingDirectory(self, title + " — choose parent directory")
+        if not parent:
+            return None
+        name, accepted = QInputDialog.getText(self, title, "New folder name:")
+        if not accepted:
+            return None
+        name = name.strip()
+        if not name or name in {".", ".."} or "/" in name or "\\\\" in name:
+            QMessageBox.warning(self, "Invalid folder name", "Enter one valid folder name.")
+            return None
+        return Path(parent) / name
+
+    def _switch_project(self, folder: Path) -> None:
+        # Open the target before closing the current workspace.
+        target = Storage(folder / DB_NAME)
+        old = self.storage
+        self.stop_session()
+        self.storage = target
+        self.project_folder = folder
+        self.session_id = target.start_session()
+        self.active_seconds = 0
+        self.paused = False
+        self.last_tick = time.monotonic()
+        self.tick_timer.start(1000)
+        self.pause_button.setEnabled(True)
+        self.pause_button.setText("Pause")
+        self.stop_button.setEnabled(True)
+        self.pin_designer.storage = target
+        self.pin_designer.reload_pins()
+        self.calendar_page.storage = target
+        self.calendar_page.refresh()
+        for table in self.tables:
+            self.refresh(table)
+        self.project_label.setText("Active: " + str(folder))
+        old.close()
+
+    def new_project(self) -> None:
+        folder = self._choose_new_folder("New Project")
+        if folder is None:
+            return
+        try:
+            create_project(self.storage.conn, folder)
+            self._switch_project(folder)
+        except (OSError, ValueError, RuntimeError) as exc:
+            QMessageBox.warning(self, "New project failed", str(exc))
+
+    def open_project(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, "Open ITHutir project")
+        if not folder:
+            return
+        try:
+            verify_project(folder)
+            self._switch_project(Path(folder).resolve())
+        except (OSError, ValueError, RuntimeError) as exc:
+            QMessageBox.warning(self, "Open failed", str(exc))
+
+    def save_active_project(self) -> None:
+        if self.project_folder is None:
+            QMessageBox.information(self, "Save Project", "Use Save As to create a project folder.")
+            return
+        try:
+            save_project(self.storage.conn, self.project_folder)
+            QMessageBox.information(self, "Saved", "Project manifest and database saved.")
+        except (OSError, ValueError, RuntimeError) as exc:
+            QMessageBox.warning(self, "Save failed", str(exc))
+
+    def save_as_project(self) -> None:
+        folder = self._choose_new_folder("Save As")
+        if folder is None:
+            return
+        try:
+            create_project(self.storage.conn, folder)
+            self._switch_project(folder)
+        except (OSError, ValueError, RuntimeError) as exc:
+            QMessageBox.warning(self, "Save As failed", str(exc))
+
+    def backup_full_project(self) -> None:
+        if self.project_folder is None:
+            QMessageBox.information(self, "Backup", "Use Save As first.")
+            return
+        destination, _ = QFileDialog.getSaveFileName(
+            self, "Full project backup", "ithutir-project.zip", "ZIP (*.zip)")
+        if not destination:
+            return
+        try:
+            save_project(self.storage.conn, self.project_folder)
+            backup_project(self.project_folder, destination)
+            QMessageBox.information(self, "Backup complete", "ZIP backup created and source verified.")
+        except (OSError, ValueError, RuntimeError) as exc:
+            QMessageBox.warning(self, "Backup failed", str(exc))
+
+    def restore_full_project(self) -> None:
+        source, _ = QFileDialog.getOpenFileName(self, "Restore project ZIP", "", "ZIP (*.zip)")
+        if not source:
+            return
+        folder = self._choose_new_folder("Restore to new folder")
+        if folder is None:
+            return
+        try:
+            restored = restore_project(source, folder)
+            QMessageBox.information(
+                self, "Restored", f"Project restored to {restored}. Open it using Open Project.")
+        except (OSError, ValueError, RuntimeError, __import__("zipfile").BadZipFile) as exc:
+            QMessageBox.warning(self, "Restore failed", str(exc))
 
     def backup_workspace(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
