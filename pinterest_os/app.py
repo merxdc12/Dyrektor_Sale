@@ -296,7 +296,13 @@ class MainWindow(QMainWindow):
         if folder is None:
             return
         try:
-            create_project(self.storage.conn, folder)
+            import tempfile
+            with tempfile.TemporaryDirectory() as tmp:
+                blank = Storage(Path(tmp) / "blank.sqlite3")
+                try:
+                    create_project(blank.conn, folder)
+                finally:
+                    blank.close()
             self._switch_project(folder)
         except (OSError, ValueError, RuntimeError) as exc:
             QMessageBox.warning(self, "New project failed", str(exc))
