@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 )
 
 from .carousel_logic import export_carousel, validate_slides
+from .carousel_viewer import CarouselViewer
 
 
 class CarouselPage(QWidget):
@@ -47,6 +48,9 @@ class CarouselPage(QWidget):
         layout.addWidget(self.preview_label)
         self.slide_info = QLabel("No slides")
         layout.addWidget(self.slide_info)
+        fullscreen = QPushButton('Full-screen preview')
+        fullscreen.clicked.connect(self.show_fullscreen)
+        layout.addWidget(fullscreen)
         navigation = QHBoxLayout()
         previous = QPushButton("Previous slide")
         previous.clicked.connect(lambda: self.navigate(-1))
@@ -128,6 +132,19 @@ class CarouselPage(QWidget):
         self.preview_label.setPixmap(pixmap.scaled(
             QSize(260, 300), Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation))
+
+    def show_fullscreen(self):
+        carousel_id = self.carousel.currentData()
+        if carousel_id is None:
+            QMessageBox.information(self, "No carousel", "Create a carousel first.")
+            return
+        slides = self.storage.carousel_slides(carousel_id)
+        if not slides:
+            QMessageBox.information(self, "No slides", "Add slides first.")
+            return
+        viewer = CarouselViewer(slides, max(0, self.slides.currentRow()), self)
+        viewer.exec()
+        self.slides.setCurrentRow(viewer.index)
 
     def create_carousel(self):
         title, ok = QInputDialog.getText(self, "New carousel", "Carousel title:")
