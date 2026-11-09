@@ -39,6 +39,14 @@ CREATE TABLE IF NOT EXISTS carousel_slides (
  position INTEGER NOT NULL,
  PRIMARY KEY(carousel_id,pin_id), UNIQUE(carousel_id,position)
 );
+CREATE TABLE IF NOT EXISTS pinterest_metrics (
+ date TEXT NOT NULL,
+ pin_id INTEGER NOT NULL REFERENCES pins(id) ON DELETE CASCADE,
+ impressions INTEGER NOT NULL CHECK(impressions >= 0),
+ outbound_clicks INTEGER NOT NULL CHECK(outbound_clicks >= 0),
+ saves INTEGER NOT NULL CHECK(saves >= 0),
+ PRIMARY KEY(date,pin_id)
+);
 CREATE TABLE IF NOT EXISTS work_sessions (
  id INTEGER PRIMARY KEY, started_at TEXT NOT NULL,
  ended_at TEXT, active_seconds INTEGER NOT NULL DEFAULT 0
