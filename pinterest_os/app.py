@@ -375,7 +375,10 @@ class MainWindow(QMainWindow):
             return None
         return Path(parent) / name
 
-    def _switch_project(self, folder: Path) -> None:
+    def _switch_project(self, folder: Path) -> bool:
+        # Never discard unsaved canvas work while changing workspaces.
+        if not self.pin_designer.confirm_discard():
+            return False
         # Open the target before closing the current workspace.
         if self.project_folder is not None and self.project_folder.resolve() != folder.resolve():
             save_project(self.storage.conn, self.project_folder)
@@ -394,7 +397,15 @@ class MainWindow(QMainWindow):
         self.stop_button.setEnabled(True)
         self.pin_designer.storage = target
         self.pin_designer.reload_pins()
-        self.pin_designer.apply_template()
+        self.pin_designer._loading = True
+        try:
+            self.pin_designer.apply_template()
+        finally:
+            self.pin_designer._loading = False
+        self.pin_designer._canvas_pin_id = self.pin_designer.pin.currentData()
+        self.pin_designer._saved_snapshot = self.pin_designer.snapshot()
+        self.pin_designer.dirty = False
+        self.pin_designer.dirty_label.setText("Saved / no pending changes")
         self.pin_designer.canva_id.clear()
         self.calendar_page.storage = target
         self.calendar_page.refresh()
@@ -404,6 +415,7 @@ class MainWindow(QMainWindow):
         self._remember_project(folder)
         self.refresh_project_inventory()
         old.close()
+        return True
 
     def new_project(self) -> None:
         folder = self._choose_new_folder("New Project")
@@ -778,6 +790,16 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Session stopped. Data saved.")
 
     def closeEvent(self, event) -> None:
+        if not self.pin_designer.confirm_discard():
+            event.ignore()
+            return
+        if self.project_folder is not None:
+            try:
+                save_project(self.storage.conn, self.project_folder)
+            except Exception as exc:
+                QMessageBox.warning(self, "Project save failed", str(exc))
+                event.ignore()
+                return
         self.stop_session()
         self.storage.close()
         event.accept()
