@@ -1,8 +1,7 @@
-"""Reports tab: read-only preview and manual CSV export."""
+"""Reports workspace: export-only UI, without duplicate Analytics tables."""
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QComboBox,
-                             QPushButton, QFileDialog, QMessageBox,
-                             QTableWidget, QTableWidgetItem, QGroupBox)
-from .reports import FIELDS, report_rows, export_report, report_warnings
+                             QPushButton, QFileDialog, QMessageBox)
+from .reports import report_rows, export_report, report_warnings
 
 
 class ReportsPage(QWidget):
@@ -10,29 +9,29 @@ class ReportsPage(QWidget):
         super().__init__(parent)
         self.storage = storage
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("PRODUCT REPORTS — attributed estimates, NOT verified net profit. "
-                                "Current product assignments; no currency conversion."))
+        layout.addWidget(QLabel(
+            "PRODUCT REPORTS — export of attributed estimates, NOT verified net profit. "
+            "Financial detail and reconciliation remain in ANALYTICS."))
         self.currency = QComboBox()
-        self.currency.currentIndexChanged.connect(self.refresh_table)
+        self.currency.currentIndexChanged.connect(self.refresh_summary)
         layout.addWidget(self.currency)
         refresh = QPushButton("Refresh export summary")
         refresh.clicked.connect(self.refresh)
         layout.addWidget(refresh)
+        self.summary = QLabel()
+        self.summary.setWordWrap(True)
+        layout.addWidget(self.summary)
         self.warning = QLabel()
         self.warning.setWordWrap(True)
         layout.addWidget(self.warning)
-        self.table = QTableWidget(0, len(FIELDS))
-        self.table.setHorizontalHeaderLabels(FIELDS)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        layout.addWidget(self.table)
-        self.table.setVisible(False)
-        layout.addWidget(QLabel("Financial detail tables and reconciliation remain in ANALYTICS. "
-                                "REPORTS is the dedicated export workspace; no duplicate financial dashboard."))
         export = QPushButton("Export product report CSV")
         export.clicked.connect(self.save_csv)
         layout.addWidget(export)
-        layout.addWidget(QLabel("Blank estimates mean unknown or unresolved. "
-                                "CSV exports are local; no automatic publication."))
+        layout.addWidget(QLabel(
+            "CSV includes per-product revenue, costs, labor estimates, ROI, decisions "
+            "and data-integrity flags. Blank values mean unknown or unresolved. "
+            "No automatic publication or currency conversion."))
+        layout.addStretch()
         self.refresh()
 
     def refresh(self):
@@ -44,29 +43,26 @@ class ReportsPage(QWidget):
         self.currency.clear()
         for code in currencies:
             self.currency.addItem(code, code)
-        self.currency.setCurrentIndex(self.currency.findData(previous) if previous in currencies else
-                                      (0 if currencies else -1))
+        self.currency.setCurrentIndex(
+            self.currency.findData(previous) if previous in currencies
+            else (0 if currencies else -1))
         self.currency.blockSignals(False)
-        self.refresh_table()
+        self.refresh_summary()
 
-    def refresh_table(self):
+    def refresh_summary(self):
         currency = self.currency.currentData()
         if not currency:
-            self.table.setRowCount(0)
-            self.warning.setText("No financial data or configured labor rate.")
+            self.summary.setText("No financial data or configured labor rate.")
+            self.warning.clear()
             return
         rows = report_rows(self.storage, currency)
-        self.table.setRowCount(len(rows))
-        for i, row in enumerate(rows):
-            for j, field in enumerate(FIELDS):
-                self.table.setItem(i, j, QTableWidgetItem(str(row[field])))
-        # Keep the export data model populated, but avoid repeating the Analytics table.
-        # CSV output remains the canonical detailed report.
+        self.summary.setText(
+            f"Ready to export: {len(rows)} product rows | Currency: {currency}. "
+            "Detailed records are available in the CSV export.")
         status = report_warnings(self.storage, currency)
         self.warning.setText(
-            "{} product rows | {} cost overlaps | {} unresolved. "
-            "Review attribution, all expenses and labor before decisions.".format(
-                len(rows), status["overlaps"], status["unresolved"]))
+            f"Cost overlaps: {status['overlaps']} | Unresolved: {status['unresolved']}. "
+            "Verify attribution, completeness of costs and labor before decisions.")
 
     def save_csv(self):
         currency = self.currency.currentData()
@@ -74,7 +70,7 @@ class ReportsPage(QWidget):
             QMessageBox.warning(self, "Export unavailable", "No report currency available.")
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export report", "ithutir_product_report_{}.csv".format(currency),
+            self, "Export report", f"ithutir_product_report_{currency}.csv",
             "CSV files (*.csv)")
         if not path:
             return
@@ -83,4 +79,4 @@ class ReportsPage(QWidget):
         except (OSError, ValueError) as exc:
             QMessageBox.warning(self, "Export failed", str(exc))
             return
-        QMessageBox.information(self, "Report exported", "{} rows exported.".format(count))
+        QMessageBox.information(self, "Report exported", f"{count} rows exported.")
