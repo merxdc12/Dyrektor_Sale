@@ -95,6 +95,7 @@ class SettingsPage(QWidget):
         sheet_form.setVerticalSpacing(12)
         sheet_form.setHorizontalSpacing(14)
         sheet_form.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+        sheet_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.sheet_url = QLineEdit()
         self.sheet_url.setPlaceholderText("https://docs.google.com/spreadsheets/d/.../edit#gid=0")
         self.sheet_url.setText(self.preferences.value("sheets/url", "", str))
@@ -153,7 +154,7 @@ class SettingsPage(QWidget):
             button.clicked.connect(lambda checked=False, item=kind: self.export_google(item))
             sheet_form.addRow(button)
         sheets.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        sheets_layout.addWidget(sheets)
+        sheets_layout.addWidget(sheets, 0)
         sheets_layout.addStretch(1)
         diagnostics_layout.addWidget(QLabel("Workspace diagnostics (read-only)"))
         self.diagnostics = QLabel()
@@ -170,8 +171,9 @@ class SettingsPage(QWidget):
         diagnostics_layout.addWidget(diagnostics_note)
         diagnostics_layout.addStretch(1)
         # Maintain readable controls even in a short application window.
-        for control in self.findChildren((QPushButton, QComboBox, QLineEdit)):
-            control.setMinimumHeight(38)
+        for control_type in (QPushButton, QComboBox, QLineEdit):
+            for control in self.findChildren(control_type):
+                control.setMinimumHeight(38)
         for button in self.findChildren(QPushButton):
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.sheet_preview.setMinimumHeight(220)
