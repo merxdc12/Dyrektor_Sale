@@ -12,6 +12,7 @@ import shutil
 import sqlite3
 import tempfile
 import zipfile
+import stat
 from pathlib import Path
 
 from .workspace import backup_database, verify_database
@@ -94,6 +95,8 @@ def verify_project(folder: str | Path) -> None:
     data = json.loads((folder / MANIFEST).read_text(encoding="utf-8"))
     if data.get("format") != FORMAT or not isinstance(data.get("files"), dict):
         raise ValueError("Unsupported project manifest")
+    if any(p.is_symlink() for p in folder.rglob("*")):
+        raise ValueError("Project contains symlinks")
     actual = {p.relative_to(folder).as_posix() for p in folder.rglob("*")
               if p.is_file() and p.name != MANIFEST}
     if actual != set(data["files"]):
@@ -105,6 +108,21 @@ def verify_project(folder: str | Path) -> None:
     ok, reason = verify_database(folder / DB_NAME)
     if not ok:
         raise ValueError(f"SQLite integrity failure: {reason}")
+    conn = sqlite3.connect(f"file:{folder / DB_NAME}?mode=ro", uri=True)
+    try:
+        if conn.execute("PRAGMA foreign_key_check").fetchone():
+            raise ValueError("Invalid project foreign keys")
+        for raw, png in conn.execute("SELECT project_json,png_path FROM pin_designs"):
+            data = json.loads(raw)
+            paths = [x["path"] for x in data.get("layers", []) if x.get("kind") == "image" and x.get("path")]
+            if png:
+                paths.append(png)
+            for value in paths:
+                asset = Path(value)
+                if asset.is_absolute() or not asset.parts or asset.parts[0] != "assets" or not _inside(folder / asset, folder) or not (folder / asset).is_file():
+                    raise ValueError(f"Invalid or missing project asset: {value}")
+    finally:
+        conn.close()
 
 
 def create_project(source: sqlite3.Connection, destination: str | Path) -> Path:
@@ -151,10 +169,14 @@ def backup_project(folder: str | Path, destination: str | Path) -> Path:
     destination = Path(destination).resolve()
     if destination.exists():
         raise FileExistsError("Backup destination already exists")
-    with zipfile.ZipFile(destination, "x", compression=zipfile.ZIP_DEFLATED) as archive:
-        for path in sorted(folder.rglob("*")):
-            if path.is_file():
-                archive.write(path, path.relative_to(folder).as_posix())
+    try:
+        with zipfile.ZipFile(destination, "x", compression=zipfile.ZIP_DEFLATED) as archive:
+            for path in sorted(folder.rglob("*")):
+                if path.is_file():
+                    archive.write(path, path.relative_to(folder).as_posix())
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
     return destination
 
 
@@ -168,20 +190,27 @@ def restore_project(archive_path: str | Path, destination: str | Path) -> Path:
         staged.mkdir()
         with zipfile.ZipFile(archive_path) as archive:
             entries = archive.infolist()
-            if sum(e.file_size for e in entries) > MAX_ARCHIVE_BYTES:
+            if len(entries) > 10000 or sum(e.file_size for e in entries) > MAX_ARCHIVE_BYTES:
                 raise ValueError("Archive exceeds 2 GiB uncompressed limit")
             for entry in entries:
                 path = staged / entry.filename
                 mode = entry.external_attr >> 16
                 if (not _inside(path, staged) or entry.filename.startswith("/")
-                        or (mode & 0o170000) == 0o120000):
+                        or "\\\\" in entry.filename
+                        or (mode & 0o170000) not in (0, stat.S_IFREG, stat.S_IFDIR)):
                     raise ValueError("Unsafe archive entry")
                 if entry.is_dir():
                     path.mkdir(parents=True, exist_ok=True)
                 else:
                     path.parent.mkdir(parents=True, exist_ok=True)
                     with archive.open(entry) as src, path.open("xb") as dst:
-                        shutil.copyfileobj(src, dst)
+                        remaining = entry.file_size
+                        while remaining:
+                            chunk = src.read(min(1024 * 1024, remaining))
+                            if not chunk:
+                                raise ValueError("Truncated ZIP entry")
+                            dst.write(chunk)
+                            remaining -= len(chunk)
         verify_project(staged)
         staged.rename(destination)
     return destination
