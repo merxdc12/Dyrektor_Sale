@@ -3,7 +3,7 @@
 No second timer or duplicate writes: MainWindow owns the active session.
 """
 from decimal import Decimal, ROUND_HALF_UP
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QTableWidget, QTableWidgetItem, QComboBox, QLineEdit
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QTableWidget, QTableWidgetItem, QComboBox, QLineEdit, QScrollArea, QSizePolicy
 
 
 def time_summary(storage):
@@ -66,7 +66,17 @@ class TimePage(QWidget):
         super().__init__(parent)
         self.storage = storage
         self.on_change = on_change
-        layout = QVBoxLayout(self)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        root.addWidget(scroll)
+        body = QWidget()
+        layout = QVBoxLayout(body)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(12)
+        scroll.setWidget(body)
         layout.addWidget(QLabel(
             "TIME — work sessions and task allocation. The main window controls "
             "Start/Pause/Stop; this page does not start a second timer."))
@@ -93,6 +103,9 @@ class TimePage(QWidget):
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["Task", "Tracked time", "Entries"])
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setMinimumHeight(220)
+        self.table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.table.verticalHeader().setDefaultSectionSize(36)
         layout.addWidget(self.table)
         layout.addWidget(QLabel("Product time and estimated labor (historical snapshots; legacy unknown):"))
         self.currency = QComboBox()
@@ -102,17 +115,26 @@ class TimePage(QWidget):
         self.products_table.setHorizontalHeaderLabels(
             ["Product", "Worked pins", "Time", "Labor estimate", "Time / pin", "Labor / pin"])
         self.products_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.products_table.setMinimumHeight(220)
+        self.products_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.products_table.verticalHeader().setDefaultSectionSize(36)
         layout.addWidget(self.products_table)
         layout.addWidget(QLabel("TIME 5 — weekly workload (ISO weeks):"))
         self.week_table = QTableWidget(0, 3)
         self.week_table.setHorizontalHeaderLabels(["Week", "Logged time", "Entries"])
         self.week_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.week_table.setMinimumHeight(220)
+        self.week_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.week_table.verticalHeader().setDefaultSectionSize(36)
         layout.addWidget(self.week_table)
         layout.addWidget(QLabel("Largest time-consuming tasks (bottleneck candidates):"))
         self.bottleneck_table = QTableWidget(0, 4)
         self.bottleneck_table.setHorizontalHeaderLabels(
             ["Task", "Logged time", "Share %", "Entries"])
         self.bottleneck_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.bottleneck_table.setMinimumHeight(220)
+        self.bottleneck_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.bottleneck_table.verticalHeader().setDefaultSectionSize(36)
         layout.addWidget(self.bottleneck_table)
         self.trend_note = QLabel()
         self.trend_note.setWordWrap(True)
@@ -123,6 +145,7 @@ class TimePage(QWidget):
         layout.addWidget(QLabel(
             "Time is not revenue or verified profit. Labor valuation is calculated "
             "in ANALYTICS using the configured hourly rate."))
+        layout.addStretch(1)
         self.currency.currentIndexChanged.connect(self.refresh_products)
         self.refresh()
 
