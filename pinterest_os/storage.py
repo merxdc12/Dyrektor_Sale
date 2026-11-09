@@ -100,6 +100,8 @@ CREATE TABLE IF NOT EXISTS time_entries (
  id INTEGER PRIMARY KEY,
  session_id INTEGER NOT NULL REFERENCES work_sessions(id),
  task TEXT NOT NULL, pin_id INTEGER REFERENCES pins(id),
+ product_id_snapshot INTEGER, product_name_snapshot TEXT,
+ attribution_known INTEGER NOT NULL DEFAULT 0,
  seconds INTEGER NOT NULL CHECK(seconds >= 0),
  created_at TEXT NOT NULL
 );
@@ -145,6 +147,15 @@ class Storage:
         self.conn.execute(
             """CREATE UNIQUE INDEX IF NOT EXISTS ux_cost_source_ref
                ON cost_entries(currency,source_ref) WHERE source_ref IS NOT NULL""")
+        # Historical product attribution: never guess a product for legacy entries.
+        time_columns = {row[1] for row in self.conn.execute("PRAGMA table_info(time_entries)")}
+        for column, declaration in {
+            "product_id_snapshot": "INTEGER",
+            "product_name_snapshot": "TEXT",
+            "attribution_known": "INTEGER NOT NULL DEFAULT 0",
+        }.items():
+            if column not in time_columns:
+                self.conn.execute(f"ALTER TABLE time_entries ADD COLUMN {column} {declaration}")
         self.conn.commit()
 
     def set_canva_design_id(self, pin_id: int, design_id: str) -> None:
@@ -318,8 +329,16 @@ class Storage:
             return
         if not task.strip():
             raise ValueError("Task name is required")
-        if pin_id is not None and not self.get("pins", pin_id):
-            raise ValueError("Unknown pin ID")
+        product_id = None
+        product_name = None
+        if pin_id is not None:
+            row = self.conn.execute(
+                """SELECT p.product_id, pr.name FROM pins p
+                   LEFT JOIN products pr ON pr.id=p.product_id WHERE p.id=?""",
+                (pin_id,)).fetchone()
+            if row is None:
+                raise ValueError("Unknown pin ID")
+            product_id, product_name = row
         with self.conn:
             cursor = self.conn.execute(
                 "UPDATE work_sessions SET active_seconds=active_seconds+? WHERE id=? AND ended_at IS NULL",
@@ -327,8 +346,12 @@ class Storage:
             )
             if cursor.rowcount:
                 self.conn.execute(
-                    "INSERT INTO time_entries(session_id,task,pin_id,seconds,created_at) VALUES(?,?,?,?,?)",
-                    (session_id, task.strip(), pin_id, seconds, utc_now()),
+                    """INSERT INTO time_entries
+                       (session_id,task,pin_id,seconds,created_at,
+                        product_id_snapshot,product_name_snapshot,attribution_known)
+                       VALUES(?,?,?,?,?,?,?,1)""",
+                    (session_id, task.strip(), pin_id, seconds, utc_now(),
+                     product_id, product_name),
                 )
 
     def end_session(self, session_id: int) -> None:
