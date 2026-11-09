@@ -103,6 +103,9 @@ class SettingsPage(QWidget):
         import_pins = QPushButton("Import selected worksheet as NEW pins")
         import_pins.clicked.connect(self.import_google_pins)
         sheet_form.addRow(import_pins)
+        import_metrics = QPushButton("Import NEW Pinterest metrics from selected worksheet")
+        import_metrics.clicked.connect(self.import_google_metrics)
+        sheet_form.addRow(import_metrics)
         for kind, caption in (
             ("pins", "Export pins to NEW worksheet"),
             ("time", "Export TIME entries to NEW worksheet"),
@@ -347,6 +350,7 @@ class SettingsPage(QWidget):
         try:
             rows = sheets_api.read_rows(self._google_id(), self._selected_title(), limit=10001)
             records = sheets_exchange.parse_pin_rows(rows, self.storage)
+            sheets_exchange.ensure_new_pins(self.storage, records)
         except Exception as exc:
             self._google_error(exc)
             return
@@ -364,5 +368,29 @@ class SettingsPage(QWidget):
             window = self.window()
             if hasattr(window, "refresh") and hasattr(window, "tables"):
                 window.refresh("pins")
+        except Exception as exc:
+            self._google_error(exc)
+
+    def import_google_metrics(self):
+        try:
+            rows = sheets_api.read_rows(self._google_id(), self._selected_title(), limit=10001)
+            records = sheets_exchange.parse_metric_rows(rows, self.storage)
+        except Exception as exc:
+            self._google_error(exc)
+            return
+        answer = QMessageBox.question(
+            self, "Confirm metric import",
+            f"Import {len(records)} date/pin metrics? Existing dates are never overwritten. "
+            "Values are user-supplied and NOT verified with Pinterest.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            count = sheets_exchange.import_metric_rows(self.storage, records)
+            self.sheet_status.setText(f"Imported {count} new metric rows (unverified source).")
+            window = self.window()
+            if hasattr(window, "analytics_page"):
+                window.analytics_page.refresh()
         except Exception as exc:
             self._google_error(exc)
