@@ -42,3 +42,22 @@ def test_empty_report(tmp_path):
         assert export_report(db, tmp_path / "empty.csv") == 0
     finally:
         db.close()
+
+def test_export_escapes_spreadsheet_formulas(tmp_path):
+    db = Storage(tmp_path / "formula.sqlite3")
+    try:
+        product = db.create("products", name="=1+1")
+        pin = db.create("pins", title="Formula name", product_id=product)
+        with db.conn:
+            db.conn.execute(
+                """INSERT INTO business_metrics
+                   (date,pin_id,currency,site_visits,conversions,revenue_cents,reported_cost_cents)
+                   VALUES(?,?,?,?,?,?,?)""",
+                ("2026-11-01", pin, "USD", 1, 0, 100, 0))
+        target = tmp_path / "safe.csv"
+        export_report(db, target, "USD")
+        with target.open(encoding="utf-8-sig", newline="") as handle:
+            row = next(csv.DictReader(handle))
+        assert row["product_name"] == "'=1+1"
+    finally:
+        db.close()
