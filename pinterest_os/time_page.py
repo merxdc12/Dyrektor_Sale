@@ -2,7 +2,7 @@
 
 No second timer or duplicate writes: MainWindow owns the active session.
 """
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QTableWidget, QTableWidgetItem
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QTableWidget, QTableWidgetItem, QComboBox, QLineEdit
 
 
 def time_summary(storage):
@@ -27,15 +27,28 @@ def duration(seconds):
 
 
 class TimePage(QWidget):
-    def __init__(self, storage, parent=None):
+    def __init__(self, storage, parent=None, on_change=None):
         super().__init__(parent)
         self.storage = storage
+        self.on_change = on_change
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(
             "TIME — work sessions and task allocation. The main window controls "
             "Start/Pause/Stop; this page does not start a second timer."))
         self.current = QLabel("Current session: 00:00:00")
         layout.addWidget(self.current)
+        layout.addWidget(QLabel("Task attribution for future time:"))
+        self.task = QLineEdit("General")
+        layout.addWidget(self.task)
+        self.pin = QComboBox()
+        layout.addWidget(self.pin)
+        apply_button = QPushButton("Apply task / pin")
+        apply_button.clicked.connect(self.apply_attribution)
+        layout.addWidget(apply_button)
+        self.active_task = "General"
+        self.active_pin_id = None
+        self.selection = QLabel("Active: General / Unassigned")
+        layout.addWidget(self.selection)
         self.summary = QLabel()
         self.summary.setWordWrap(True)
         layout.addWidget(self.summary)
@@ -51,10 +64,36 @@ class TimePage(QWidget):
             "in ANALYTICS using the configured hourly rate."))
         self.refresh()
 
+    def apply_attribution(self):
+        name = self.task.text().strip()
+        if not name:
+            self.selection.setText("Task name required; attribution unchanged.")
+            return
+        if self.on_change:
+            self.on_change()
+        self.active_task = name
+        self.active_pin_id = self.pin.currentData()
+        self.selection.setText("Active: {} / Pin {}".format(
+            name, self.active_pin_id if self.active_pin_id is not None else "Unassigned"))
+
+    def reset_attribution(self):
+        self.active_task = "General"
+        self.active_pin_id = None
+        self.task.setText("General")
+        self.refresh()
+        self.pin.setCurrentIndex(0)
+        self.selection.setText("Active: General / Unassigned")
+
     def set_current(self, seconds):
         self.current.setText("Current session: " + duration(seconds))
 
     def refresh(self):
+        previous = self.pin.currentData()
+        self.pin.clear()
+        self.pin.addItem("Unassigned", None)
+        for pin in self.storage.all("pins"):
+            self.pin.addItem("#{} — {}".format(pin["id"], pin["title"]), pin["id"])
+        self.pin.setCurrentIndex(max(0, self.pin.findData(previous)))
         data = time_summary(self.storage)
         self.summary.setText(
             f"Sessions: {data['sessions']} | Total: {duration(data['total_seconds'])} | "
