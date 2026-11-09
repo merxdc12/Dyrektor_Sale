@@ -128,7 +128,8 @@ class MainWindow(QMainWindow):
                     catalog_layout = QVBoxLayout(catalog)
                     self.build_catalog(catalog_layout, table)
                     tabs.addTab(catalog, "Pin Library / CSV")
-                    tabs.addTab(PinDesigner(), "Pin Designer")
+                    self.pin_designer = PinDesigner(self.storage)
+                    tabs.addTab(self.pin_designer, "Pin Designer")
                     content.addWidget(tabs, 1)
                 else:
                     self.build_catalog(content, table)
@@ -248,6 +249,7 @@ class MainWindow(QMainWindow):
         try:
             count = import_pins(self.storage, path)
             self.refresh("pins")
+            self.pin_designer.reload_pins()
             QMessageBox.information(self, "Import complete", f"Imported {count} pins.")
         except (ValueError, OSError, UnicodeError, Exception) as exc:
             QMessageBox.warning(self, "Import failed", str(exc))
@@ -281,6 +283,8 @@ class MainWindow(QMainWindow):
     def edit_record(self, table: str, record: dict | None = None) -> None:
         if RecordEditor(self.storage, table, record, self).exec():
             self.refresh(table)
+            if table == "pins":
+                self.pin_designer.reload_pins()
             if table in {"boards", "products"}:
                 self.refresh("pins")
 
