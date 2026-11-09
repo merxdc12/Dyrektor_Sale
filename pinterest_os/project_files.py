@@ -34,38 +34,50 @@ def _inside(path: Path, root: Path) -> bool:
     return path.resolve().is_relative_to(root.resolve())
 
 
+def _asset_source(value: str, folder: Path) -> Path:
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = folder / path
+    return path.resolve()
+
+
 def _copy_assets(db: sqlite3.Connection, folder: Path) -> None:
+    """Collect referenced files and store only project-relative asset paths."""
     folder_assets = folder / "assets"
-    folder_assets.mkdir()
+    folder_assets.mkdir(exist_ok=True)
     rows = db.execute("SELECT pin_id,project_json,png_path FROM pin_designs").fetchall()
+    updates = []
     for pin_id, raw, png in rows:
         project = json.loads(raw)
-        changes = False
         for index, layer in enumerate(project.get("layers", [])):
             if layer.get("kind") != "image" or not layer.get("path"):
                 continue
-            source = Path(layer["path"]).expanduser().resolve()
+            source = _asset_source(layer["path"], folder)
             if not source.is_file():
                 raise FileNotFoundError(f"Missing image asset: {source}")
             extension = source.suffix.lower()
             if extension not in {".png", ".jpg", ".jpeg", ".webp"}:
                 raise ValueError(f"Unsupported image asset: {source}")
-            name = f"pin-{pin_id}-layer-{index}{extension}"
-            shutil.copy2(source, folder_assets / name)
-            layer["path"] = str((folder_assets / name).resolve())
-            changes = True
+            relative = f"assets/pin-{pin_id}-layer-{index}{extension}"
+            destination = folder / relative
+            if source != destination:
+                shutil.copy2(source, destination)
+            layer["path"] = relative
         if png:
-            source = Path(png).expanduser().resolve()
+            source = _asset_source(png, folder)
             if not source.is_file():
                 raise FileNotFoundError(f"Missing exported PNG: {source}")
-            name = f"pin-{pin_id}-export.png"
-            shutil.copy2(source, folder_assets / name)
-            png = str((folder_assets / name).resolve())
-            changes = True
-        if changes:
-            db.execute("UPDATE pin_designs SET project_json=?,png_path=? WHERE pin_id=?",
-                       (json.dumps(project, ensure_ascii=False), png, pin_id))
-    db.commit()
+            relative = f"assets/pin-{pin_id}-export.png"
+            destination = folder / relative
+            if source != destination:
+                shutil.copy2(source, destination)
+            png = relative
+        updates.append((json.dumps(project, ensure_ascii=False), png, pin_id))
+    with db:
+        db.executemany(
+            "UPDATE pin_designs SET project_json=?,png_path=? WHERE pin_id=?",
+            updates
+        )
 
 
 def _manifest(folder: Path) -> dict:
@@ -112,38 +124,17 @@ def create_project(source: sqlite3.Connection, destination: str | Path) -> Path:
             json.dumps(_manifest(staged), indent=2), encoding="utf-8")
         verify_project(staged)
         staged.rename(destination)
-    # Asset paths were created inside staging; repair after final rename.
-    _rebase_assets(destination)
     return destination
 
 
-def _rebase_assets(folder: Path) -> None:
-    db = sqlite3.connect(folder / DB_NAME)
-    try:
-        rows = db.execute("SELECT pin_id,project_json,png_path FROM pin_designs").fetchall()
-        for pin_id, raw, png in rows:
-            project = json.loads(raw)
-            for layer in project.get("layers", []):
-                if layer.get("kind") == "image" and layer.get("path"):
-                    layer["path"] = str(folder / "assets" / Path(layer["path"]).name)
-            if png:
-                png = str(folder / "assets" / Path(png).name)
-            db.execute("UPDATE pin_designs SET project_json=?,png_path=? WHERE pin_id=?",
-                       (json.dumps(project, ensure_ascii=False), png, pin_id))
-        db.commit()
-    finally:
-        db.close()
-    (folder / MANIFEST).write_text(json.dumps(_manifest(folder), indent=2), encoding="utf-8")
-    verify_project(folder)
-
-
 def save_project(connection: sqlite3.Connection, folder: str | Path) -> None:
-    """Commit active SQLite and refresh manifest; Save As bundles new assets."""
+    """Bundle new assets on every Save and update the project manifest."""
     folder = Path(folder).resolve()
     db_path = Path(connection.execute("PRAGMA database_list").fetchone()[2]).resolve()
     if db_path != folder / DB_NAME:
         raise ValueError("Save requires the currently opened project")
     connection.commit()
+    _copy_assets(connection, folder)
     ok, reason = verify_database(folder / DB_NAME)
     if not ok:
         raise ValueError(f"Database integrity failure: {reason}")
@@ -191,5 +182,4 @@ def restore_project(archive_path: str | Path, destination: str | Path) -> Path:
                         shutil.copyfileobj(src, dst)
         verify_project(staged)
         staged.rename(destination)
-    _rebase_assets(destination)
     return destination
