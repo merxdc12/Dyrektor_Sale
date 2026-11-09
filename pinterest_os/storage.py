@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS cost_entries (
  currency TEXT NOT NULL CHECK(length(currency)=3),
  category TEXT NOT NULL CHECK(category IN ('DIRECT','ALLOCATED')),
  description TEXT NOT NULL,
+ source_ref TEXT,
  amount_cents INTEGER NOT NULL CHECK(amount_cents>=0),
  created_at TEXT NOT NULL
 );
@@ -127,6 +128,13 @@ class Storage:
         present = {row[1] for row in self.conn.execute("PRAGMA table_info(pin_designs)")}
         if "canva_design_id" not in present:
             self.conn.execute("ALTER TABLE pin_designs ADD COLUMN canva_design_id TEXT NOT NULL DEFAULT ''")
+        # Additive migration: preserve existing cost entries without inventing provenance.
+        cost_columns = {row[1] for row in self.conn.execute("PRAGMA table_info(cost_entries)")}
+        if "source_ref" not in cost_columns:
+            self.conn.execute("ALTER TABLE cost_entries ADD COLUMN source_ref TEXT")
+        self.conn.execute(
+            """CREATE UNIQUE INDEX IF NOT EXISTS ux_cost_source_ref
+               ON cost_entries(currency,source_ref) WHERE source_ref IS NOT NULL""")
         self.conn.commit()
 
     def set_canva_design_id(self, pin_id: int, design_id: str) -> None:
