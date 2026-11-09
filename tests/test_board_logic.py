@@ -39,3 +39,27 @@ def test_board_seo_advice_and_plan_order():
     ]
     planned = board_plan(board, pins, date(2026, 11, 9))
     assert [p["pin_id"] for p in planned] == [1, 2]
+
+
+def test_existing_database_board_category_migration(tmp_path: Path):
+    import sqlite3
+    db = tmp_path / "legacy.sqlite3"
+    connection = sqlite3.connect(db)
+    connection.execute(
+        "CREATE TABLE boards (id INTEGER PRIMARY KEY, name TEXT NOT NULL, "
+        "url TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', "
+        "created_at TEXT NOT NULL)")
+    connection.execute(
+        "INSERT INTO boards(name, description, created_at) VALUES (?, ?, ?)",
+        ("Old board", "Existing content", "2026-01-01"))
+    connection.commit()
+    connection.close()
+    storage = Storage(db)
+    try:
+        board = storage.all("boards")[0]
+        assert board["name"] == "Old board"
+        assert board["category"] == "Other"
+        storage.update("boards", board["id"], category=CATEGORIES[0])
+        assert storage.get("boards", board["id"])["category"] == CATEGORIES[0]
+    finally:
+        storage.close()
