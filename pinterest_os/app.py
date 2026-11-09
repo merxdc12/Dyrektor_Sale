@@ -17,6 +17,7 @@ from .board_logic import CATEGORIES, board_plan, board_seo_issues
 from .calendar import CalendarPage
 from .analytics import AnalyticsPage
 from .reports_page import ReportsPage
+from .time_page import TimePage
 from .publishing import PublishingPage
 from .editor import RecordEditor
 from .designer import PinDesigner
@@ -168,11 +169,8 @@ class MainWindow(QMainWindow):
                 body.addWidget(selector)
                 content.addWidget(panel)
             elif name == "TIME":
-                panel, body = card()
-                body.addWidget(label("Current work session", "Heading"))
-                self.time_metric = label("00:00:00", "Metric")
-                body.addWidget(self.time_metric)
-                content.addWidget(panel)
+                self.time_page = TimePage(self.storage)
+                content.addWidget(self.time_page, 1)
             elif name == "ANALYTICS":
                 self.analytics_page = AnalyticsPage(self.storage)
                 content.addWidget(self.analytics_page, 1)
@@ -425,6 +423,9 @@ class MainWindow(QMainWindow):
         self.analytics_page.refresh()
         self.reports_page.storage = target
         self.reports_page.refresh()
+        self.time_page.storage = target
+        self.time_page.set_current(0)
+        self.time_page.refresh()
         for table in self.tables:
             self.refresh(table)
         self.project_label.setText("Active: " + str(folder))
@@ -897,8 +898,8 @@ class MainWindow(QMainWindow):
     def render_timer(self) -> None:
         value = format_duration(self.active_seconds)
         self.timer_label.setText(value)
-        if hasattr(self, "time_metric"):
-            self.time_metric.setText(value)
+        if hasattr(self, "time_page"):
+            self.time_page.set_current(self.active_seconds)
 
     def toggle_pause(self) -> None:
         if self.session_id is None:
