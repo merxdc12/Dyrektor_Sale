@@ -2,13 +2,13 @@
 from pathlib import Path
 import webbrowser
 from urllib.parse import urlparse
-from PyQt6.QtCore import QSettings
+from PyQt6.QtCore import QSettings, Qt
 from .google_sheets_link import parse_sheet_url, preview_public_sheet
 from . import sheets_api, sheets_exchange
 from .product_io import validate_products, COLUMNS
 from .reports import report_rows, FIELDS as REPORT_FIELDS
 from datetime import datetime, timezone
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QComboBox, QPushButton, QLineEdit, QFormLayout, QGroupBox, QPlainTextEdit, QFileDialog, QMessageBox, QTabWidget, QScrollArea
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QComboBox, QPushButton, QLineEdit, QFormLayout, QGroupBox, QPlainTextEdit, QFileDialog, QMessageBox, QTabWidget, QScrollArea, QSizePolicy, QLayout
 
 
 class SettingsPage(QWidget):
@@ -20,16 +20,22 @@ class SettingsPage(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         tabs = QTabWidget(self)
         tabs.setObjectName("SettingsSubtabs")
-        root.addWidget(tabs)
+        root.addWidget(tabs, 1)
+        tabs.setMinimumHeight(320)
+        tabs.tabBar().setExpanding(False)
 
         def make_tab(name):
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
+            scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            scroll.setMinimumHeight(260)
             scroll.setFrameShape(QScrollArea.Shape.NoFrame)
             panel = QWidget()
             column = QVBoxLayout(panel)
             column.setContentsMargins(14, 14, 14, 14)
-            column.setSpacing(12)
+            column.setSpacing(14)
+            column.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
             scroll.setWidget(panel)
             tabs.addTab(scroll, name)
             return column
@@ -53,6 +59,7 @@ class SettingsPage(QWidget):
         form = QFormLayout(accounts)
         form.setVerticalSpacing(12)
         form.setHorizontalSpacing(14)
+        form.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         self.pinterest_email = QLineEdit()
         self.pinterest_email.setText(self.preferences.value("accounts/pinterest_email", "", str))
         self.pinterest_email.setPlaceholderText("Pinterest account email")
@@ -80,12 +87,14 @@ class SettingsPage(QWidget):
         google_login.clicked.connect(lambda: webbrowser.open("https://drive.google.com/"))
         form.addRow(google_login)
         appearance_layout.addStretch(1)
+        accounts.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         accounts_layout.addWidget(accounts)
         accounts_layout.addStretch(1)
         sheets = QGroupBox("Google Sheets — selected spreadsheet")
         sheet_form = QFormLayout(sheets)
         sheet_form.setVerticalSpacing(12)
         sheet_form.setHorizontalSpacing(14)
+        sheet_form.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         self.sheet_url = QLineEdit()
         self.sheet_url.setPlaceholderText("https://docs.google.com/spreadsheets/d/.../edit#gid=0")
         self.sheet_url.setText(self.preferences.value("sheets/url", "", str))
@@ -143,6 +152,7 @@ class SettingsPage(QWidget):
             button = QPushButton(caption)
             button.clicked.connect(lambda checked=False, item=kind: self.export_google(item))
             sheet_form.addRow(button)
+        sheets.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         sheets_layout.addWidget(sheets)
         sheets_layout.addStretch(1)
         diagnostics_layout.addWidget(QLabel("Workspace diagnostics (read-only)"))
@@ -159,6 +169,12 @@ class SettingsPage(QWidget):
         diagnostics_note.setWordWrap(True)
         diagnostics_layout.addWidget(diagnostics_note)
         diagnostics_layout.addStretch(1)
+        # Maintain readable controls even in a short application window.
+        for control in self.findChildren((QPushButton, QComboBox, QLineEdit)):
+            control.setMinimumHeight(38)
+        for button in self.findChildren(QPushButton):
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.sheet_preview.setMinimumHeight(220)
         self.refresh()
 
     def change_theme(self, index):
