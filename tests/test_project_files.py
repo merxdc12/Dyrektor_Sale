@@ -32,7 +32,7 @@ class ProjectTests(unittest.TestCase):
         copy = sqlite3.connect(project / DB_NAME)
         try:
             row = copy.execute("SELECT project_json FROM pin_designs").fetchone()
-            self.assertTrue(Path(json.loads(row[0])["layers"][0]["path"]).is_file())
+            self.assertTrue((project / json.loads(row[0])["layers"][0]["path"]).is_file())
         finally:
             copy.close()
         archive = backup_project(project, self.root / "project.zip")
@@ -43,9 +43,34 @@ class ProjectTests(unittest.TestCase):
             row = copy.execute("SELECT project_json FROM pin_designs").fetchone()
             path = Path(json.loads(row[0])["layers"][0]["path"])
             self.assertTrue(path.is_file())
-            self.assertTrue(path.is_relative_to(restored))
+            self.assertFalse(path.is_absolute())
+            self.assertTrue((restored / path).is_file())
         finally:
             copy.close()
+
+    def test_save_collects_new_external_image_and_save_as(self):
+        project = create_project(self.db.conn, self.root / "project")
+        opened = Storage(project / DB_NAME)
+        try:
+            image = self.root / "new.png"
+            image.write_bytes(b"new-image")
+            pin = opened.create("pins", title="New design")
+            opened.save_pin_design(pin, json.dumps({
+                "version": 1, "width": 1000, "height": 1500,
+                "layers": [{"kind": "image", "path": str(image),
+                            "x": 0, "y": 0, "width": 100, "height": 100}]
+            }))
+            save_project(opened.conn, project)
+            verify_project(project)
+            record = opened.get_pin_design(pin)
+            relative = Path(json.loads(record["project_json"])["layers"][0]["path"])
+            self.assertFalse(relative.is_absolute())
+            self.assertTrue((project / relative).is_file())
+            clone = create_project(opened.conn, self.root / "clone")
+            verify_project(clone)
+            self.assertTrue((clone / relative).is_file())
+        finally:
+            opened.close()
 
     def test_refuses_existing_destination(self):
         with self.assertRaises(FileExistsError):
