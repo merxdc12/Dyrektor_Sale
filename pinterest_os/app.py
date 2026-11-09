@@ -6,7 +6,7 @@ import time
 import webbrowser
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QStandardPaths, QTimer
+from PyQt6.QtCore import Qt, QStandardPaths, QTimer, QSettings
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFrame, QHBoxLayout, QHeaderView, QLabel,
     QMainWindow, QMessageBox, QPushButton, QScrollArea, QFileDialog, QTabWidget, QLineEdit,
@@ -20,6 +20,7 @@ from .csv_io import import_pins, export_pins
 from .storage import Storage
 from .workspace import backup_database, verify_database
 from .product_io import import_products, export_products
+from .project_manager import project_summary, rename_project
 from .project_files import (DB_NAME, MANIFEST, create_project, save_project,
                             verify_project, backup_project, restore_project)
 from .theme import ThemeManager
@@ -67,6 +68,7 @@ class MainWindow(QMainWindow):
     def __init__(self, storage: Storage, theme: ThemeManager):
         super().__init__()
         self.storage, self.theme = storage, theme
+        self.recent_settings = QSettings('ITHutir', 'PinterestOS')
         self.project_folder = (storage.path.parent if storage.path.name == DB_NAME
                                and (storage.path.parent / MANIFEST).exists() else None)
         self.session_id = storage.start_session()
@@ -239,7 +241,33 @@ class MainWindow(QMainWindow):
             button.clicked.connect(action)
             archive_actions.addWidget(button)
         project_body.addLayout(archive_actions)
+        recent_row = QHBoxLayout()
+        self.recent_projects = QComboBox()
+        recent_row.addWidget(self.recent_projects, 1)
+        for caption, action in (
+            ("Open recent", self.open_recent_project),
+            ("Rename selected (inactive)", self.rename_recent_project),
+            ("Refresh inventory", self.refresh_project_inventory),
+        ):
+            button = QPushButton(caption)
+            button.clicked.connect(action)
+            recent_row.addWidget(button)
+        project_body.addLayout(recent_row)
+        self.project_inventory = label("Project inventory is available for opened project folders.")
+        project_body.addWidget(self.project_inventory)
+        self.asset_search = QLineEdit()
+        self.asset_search.setPlaceholderText("Filter assets by filename")
+        self.asset_search.textChanged.connect(self.refresh_project_inventory)
+        project_body.addWidget(self.asset_search)
+        self.asset_table = QTableWidget()
+        self.asset_table.setColumnCount(3)
+        self.asset_table.setHorizontalHeaderLabels(["Asset", "Bytes", "Referenced"])
+        self.asset_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.asset_table.setMinimumHeight(170)
+        project_body.addWidget(self.asset_table)
         content.addWidget(projects)
+        self.reload_recent_projects()
+        self.refresh_project_inventory()
         panel, body = card()
         body.addWidget(label("Workspace safety", "Heading"))
         body.addWidget(label(
@@ -253,6 +281,86 @@ class MainWindow(QMainWindow):
         actions.addWidget(verify)
         body.addLayout(actions)
         content.addWidget(panel)
+
+    def _recent_paths(self) -> list[str]:
+        values = self.recent_settings.value("recent_project_paths", [])
+        return values if isinstance(values, list) else []
+
+    def _remember_project(self, folder: Path) -> None:
+        path = str(folder.resolve())
+        values = [path] + [x for x in self._recent_paths() if x != path]
+        self.recent_settings.setValue("recent_project_paths", values[:12])
+        self.reload_recent_projects()
+
+    def reload_recent_projects(self) -> None:
+        if not hasattr(self, "recent_projects"):
+            return
+        current = self.recent_projects.currentData()
+        self.recent_projects.clear()
+        for path in self._recent_paths():
+            self.recent_projects.addItem(Path(path).name + " — " + path, path)
+        index = self.recent_projects.findData(current)
+        if index >= 0:
+            self.recent_projects.setCurrentIndex(index)
+
+    def open_recent_project(self) -> None:
+        path = self.recent_projects.currentData()
+        if not path:
+            return
+        try:
+            verify_project(path)
+            self._switch_project(Path(path).resolve())
+        except (OSError, ValueError, RuntimeError) as exc:
+            QMessageBox.warning(self, "Open recent failed", str(exc))
+
+    def rename_recent_project(self) -> None:
+        path = self.recent_projects.currentData()
+        if not path:
+            return
+        source = Path(path).resolve()
+        if self.project_folder and source == self.project_folder.resolve():
+            QMessageBox.warning(self, "Project is active",
+                                "Switch to another project before renaming this folder.")
+            return
+        name, accepted = QInputDialog.getText(self, "Rename project", "New folder name:",
+                                              text=source.name)
+        if not accepted:
+            return
+        try:
+            verify_project(source)
+            renamed = rename_project(source, name)
+            values = [str(renamed) if p == str(source) else p for p in self._recent_paths()]
+            self.recent_settings.setValue("recent_project_paths", values)
+            self.reload_recent_projects()
+        except (OSError, ValueError, RuntimeError) as exc:
+            QMessageBox.warning(self, "Rename failed", str(exc))
+
+    def refresh_project_inventory(self, *_args) -> None:
+        if not hasattr(self, "asset_table"):
+            return
+        self.asset_table.setRowCount(0)
+        if self.project_folder is None:
+            self.project_inventory.setText("Default workspace — use Save As to create a project folder.")
+            return
+        try:
+            summary = project_summary(self.project_folder)
+        except (OSError, ValueError, RuntimeError) as exc:
+            self.project_inventory.setText("Inventory unavailable: " + str(exc))
+            return
+        self.project_inventory.setText(
+            f"Products: {summary['products']}  |  Pins: {summary['pins']}  |  "
+            f"Boards: {summary['boards']}  |  Assets: {summary['asset_count']}  |  "
+            f"Unreferenced: {summary['unused_assets']}  |  "
+            f"Size: {summary['bytes']:,} bytes. Unreferenced files are NOT deleted.")
+        query = self.asset_search.text().casefold()
+        assets = [a for a in summary["assets"] if query in a["path"].casefold()]
+        self.asset_table.setRowCount(len(assets))
+        for row, item in enumerate(assets):
+            for column, value in enumerate(
+                (item["path"], str(item["size"]), "Yes" if item["referenced"] else "No")
+            ):
+                self.asset_table.setItem(row, column, QTableWidgetItem(value))
+        self.asset_table.resizeColumnsToContents()
 
     def _choose_new_folder(self, title: str) -> Path | None:
         parent = QFileDialog.getExistingDirectory(self, title + " — choose parent directory")
@@ -289,6 +397,8 @@ class MainWindow(QMainWindow):
         for table in self.tables:
             self.refresh(table)
         self.project_label.setText("Active: " + str(folder))
+        self._remember_project(folder)
+        self.refresh_project_inventory()
         old.close()
 
     def new_project(self) -> None:
