@@ -59,6 +59,23 @@ class ScheduleDialog(QDialog):
             QMessageBox.warning(self, "No pin", "Create a pin in the PIN tab first.")
             return
         scheduled = self.when.dateTime().toString("yyyy-MM-ddTHH:mm")
+        pin_record = self.storage.get("pins", pin_id)
+        if not pin_record:
+            QMessageBox.warning(self, "Missing pin", "Selected pin no longer exists.")
+            return
+        collisions = self.storage.schedule_conflicts(
+            scheduled, pin_record["board_id"],
+            self.entry["id"] if self.entry else None)
+        if collisions:
+            names = ", ".join(f"#{item['pin_id']} {item['title']}" for item in collisions[:5])
+            answer = QMessageBox.question(
+                self, "Scheduling collision",
+                f"Another pin is planned for the same board and minute:\\n{names}\\n"
+                "Keep both entries anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                return
         try:
             if self.entry:
                 self.storage.update_schedule(self.entry["id"], pin_id, scheduled, self.state.currentText())
@@ -227,9 +244,24 @@ class CalendarPage(QWidget):
         )
         if answer != QMessageBox.StandardButton.Yes:
             return False
-        self.storage.update_schedule(
-            entry_id, entry["pin_id"], day + entry["scheduled_at"][10:], entry["status"]
-        )
+        proposed = day + entry["scheduled_at"][10:]
+        pin = self.storage.get("pins", entry["pin_id"])
+        if pin:
+            conflicts = self.storage.schedule_conflicts(
+                proposed, pin["board_id"], exclude_entry_id=entry_id)
+            if conflicts and QMessageBox.question(
+                self, "Scheduling collision",
+                f"{len(conflicts)} existing entry/entries for this board and minute. Move anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            ) != QMessageBox.StandardButton.Yes:
+                return False
+        try:
+            self.storage.update_schedule(
+                entry_id, entry["pin_id"], proposed, entry["status"])
+        except (ValueError, OSError) as exc:
+            QMessageBox.warning(self, "Reschedule failed", str(exc))
+            return False
         self.refresh()
         return True
 
@@ -252,7 +284,10 @@ class CalendarPage(QWidget):
         start_iso = start.toString("yyyy-MM-dd")
         end_iso = end.toString("yyyy-MM-dd")
         entries = self.storage.schedules_between(start_iso, end_iso, self.board.currentData())
-        self.heading.setText(f"{mode}: {start_iso} — {end_iso}  |  {len(entries)} planned items")
+        summary = self.storage.calendar_summary(start_iso, end_iso, self.board.currentData())
+        counts = "  |  ".join(f"{key}: {value}" for key, value in summary.items())
+        self.heading.setText(
+            f"{mode}: {start_iso} — {end_iso}  |  {len(entries)} entries  |  {counts}")
         if mode == "Week":
             days = [start.addDays(i).toString("yyyy-MM-dd") for i in range(7)]
         elif mode == "Day":
