@@ -9,7 +9,7 @@ from pathlib import Path
 from PyQt6.QtCore import Qt, QStandardPaths, QTimer
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFrame, QHBoxLayout, QHeaderView, QLabel,
-    QMainWindow, QMessageBox, QPushButton, QScrollArea, QFileDialog, QTabWidget,
+    QMainWindow, QMessageBox, QPushButton, QScrollArea, QFileDialog, QTabWidget, QLineEdit,
     QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -19,6 +19,7 @@ from .designer import PinDesigner
 from .csv_io import import_pins, export_pins
 from .storage import Storage
 from .workspace import backup_database, verify_database
+from .product_io import import_products, export_products
 from .theme import ThemeManager
 
 MENU = ("FILE", "PIN", "BOARD", "CALENDAR", "PUBLISHING",
@@ -263,7 +264,31 @@ class MainWindow(QMainWindow):
             export_button = QPushButton("Export CSV")
             export_button.clicked.connect(self.export_csv)
             actions.addWidget(export_button)
+        if table == "products":
+            remove = QPushButton("Delete selected")
+            remove.clicked.connect(self.delete_selected_product)
+            actions.addWidget(remove)
+            import_button = QPushButton("Import CSV/JSON")
+            import_button.clicked.connect(self.import_product_file)
+            actions.addWidget(import_button)
+            export_button = QPushButton("Export CSV/JSON")
+            export_button.clicked.connect(self.export_product_file)
+            actions.addWidget(export_button)
         body.addLayout(actions)
+        if table == "products":
+            filters = QHBoxLayout()
+            search = QLineEdit()
+            search.setPlaceholderText("Search product name, category or URL")
+            search.textChanged.connect(lambda _: self.refresh("products"))
+            filters.addWidget(search)
+            category = QComboBox()
+            for value in ("ALL", "POD", "KDP", "DIGITAL", "FREE_TOOL", "OTHER"):
+                category.addItem(value, value)
+            category.currentIndexChanged.connect(lambda _: self.refresh("products"))
+            filters.addWidget(category)
+            body.addLayout(filters)
+            self.product_search = search
+            self.product_category = category
         grid = QTableWidget()
         grid.setAlternatingRowColors(True)
         grid.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -276,6 +301,60 @@ class MainWindow(QMainWindow):
         body.addWidget(grid)
         content.addWidget(panel, 1)
         self.tables[table] = grid
+
+    def selected_product_id(self) -> int | None:
+        grid = self.tables["products"]
+        row = grid.currentRow()
+        if row < 0 or grid.item(row, 0) is None:
+            return None
+        return int(grid.item(row, 0).text())
+
+    def delete_selected_product(self) -> None:
+        product_id = self.selected_product_id()
+        if product_id is None:
+            QMessageBox.information(self, "Select product", "Select a product first.")
+            return
+        product = self.storage.get("products", product_id)
+        if not product:
+            return
+        count = self.storage.product_pin_count(product_id)
+        warning = (
+            f"Delete product '{product['name']}'?\\n"
+            f"{count} linked pin(s) will remain, but their product link will be cleared.\\n"
+            "This cannot be undone."
+        )
+        if QMessageBox.question(self, "Confirm product deletion", warning,
+                                QMessageBox.StandardButton.Yes |
+                                QMessageBox.StandardButton.No,
+                                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+        self.storage.delete_product(product_id)
+        self.refresh("products")
+        self.refresh("pins")
+
+    def import_product_file(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import products", "", "Product files (*.csv *.json)")
+        if not path:
+            return
+        try:
+            count = import_products(self.storage, path)
+            self.refresh("products")
+            QMessageBox.information(self, "Import complete", f"Imported {count} products.")
+        except (OSError, ValueError, UnicodeError) as exc:
+            QMessageBox.warning(self, "Import failed", str(exc))
+
+    def export_product_file(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export products", "ithutir-products.csv",
+            "CSV (*.csv);;JSON (*.json)")
+        if not path:
+            return
+        try:
+            count = export_products(self.storage, path)
+            QMessageBox.information(self, "Export complete", f"Exported {count} products.")
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Export failed", str(exc))
 
     def import_csv(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Import pin metadata", "", "CSV (*.csv)")
@@ -301,7 +380,8 @@ class MainWindow(QMainWindow):
 
     def refresh(self, table: str) -> None:
         grid = self.tables[table]
-        rows = self.storage.all(table)
+        rows = (self.storage.search_products(self.product_search.text(), self.product_category.currentData())
+                if table == "products" else self.storage.all(table))
         fields = {
             "products": ("id", "name", "category", "target_url"),
             "boards": ("id", "name", "url", "description"),
