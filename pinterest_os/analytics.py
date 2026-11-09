@@ -8,6 +8,7 @@ from .analytics_chart import MetricsChart
 from .business_metrics import import_business_metrics, business_summary
 from .profit_panel import ProfitCostsPanel
 from .product_profitability import product_profitability
+from .product_decisions import decision_report
 
 
 def operational_summary(storage):
@@ -90,6 +91,10 @@ class AnalyticsPage(QWidget):
         self.product_table = QTableWidget(0, 8)
         self.product_table.setHorizontalHeaderLabels(["Product", "Revenue", "Reported cost", "Direct cost", "Allocated cost", "Labor estimate", "Estimated contribution", "ROI %"])
         layout.addWidget(self.product_table)
+        layout.addWidget(QLabel("DECISION SUPPORT — policy heuristics, not predictions. SCALE is a candidate for manual review; STOP is never automatic."))
+        self.decision_table = QTableWidget(0, 4)
+        self.decision_table.setHorizontalHeaderLabels(["Product", "Recommendation", "Evidence", "Reason"])
+        layout.addWidget(self.decision_table)
         self.refresh()
 
     def import_csv(self):
@@ -205,6 +210,13 @@ class AnalyticsPage(QWidget):
             for j, value in enumerate(values):
                 self.product_table.setItem(i, j, QTableWidgetItem(str(value)))
         self.product_table.resizeColumnsToContents()
+        decisions = decision_report(self.storage, currency) if rows else []
+        self.decision_table.setRowCount(len(decisions))
+        for i, item in enumerate(decisions):
+            values = (item["product_name"], item["decision"], item["evidence"], item["reason"])
+            for j, value in enumerate(values):
+                self.decision_table.setItem(i, j, QTableWidgetItem(str(value)))
+        self.decision_table.resizeColumnsToContents()
 
     def refresh_groups(self):
         if not hasattr(self, "groups"):
