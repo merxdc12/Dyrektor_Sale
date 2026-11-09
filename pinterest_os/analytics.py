@@ -1,7 +1,8 @@
 """Offline operational analytics; never presents local status as Pinterest performance."""
 from collections import Counter
 
-from PyQt6.QtWidgets import QLabel, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QFileDialog, QLabel, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
+from .analytics_import import import_metrics, metric_history
 
 
 def operational_summary(storage):
@@ -36,7 +37,26 @@ class AnalyticsPage(QWidget):
         self.table = QTableWidget(0, 2)
         self.table.setHorizontalHeaderLabels(["Metric", "Local count"])
         layout.addWidget(self.table)
+        layout.addWidget(QLabel("CSV columns: date,pin_id,impressions,outbound_clicks,saves (local pin IDs)."))
+        button = QPushButton("Import metrics CSV")
+        button.clicked.connect(self.import_csv)
+        layout.addWidget(button)
+        self.history = QTableWidget(0, 4)
+        self.history.setHorizontalHeaderLabels(["Date", "Impressions", "Outbound clicks", "Saves"])
+        layout.addWidget(self.history)
         self.refresh()
+
+    def import_csv(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Import metrics", "", "CSV (*.csv)")
+        if not path:
+            return
+        try:
+            count = import_metrics(self.storage, path)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Import failed", str(exc))
+            return
+        self.refresh()
+        QMessageBox.information(self, "Imported", f"Imported {count} records.")
 
     def refresh(self):
         values = operational_summary(self.storage)
@@ -53,3 +73,9 @@ class AnalyticsPage(QWidget):
             self.table.setItem(index, 0, QTableWidgetItem(title))
             self.table.setItem(index, 1, QTableWidgetItem(str(values[key])))
         self.table.resizeColumnsToContents()
+        rows = metric_history(self.storage)
+        self.history.setRowCount(len(rows))
+        for i, row in enumerate(rows):
+            for j, value in enumerate(row):
+                self.history.setItem(i, j, QTableWidgetItem(str(value)))
+        self.history.resizeColumnsToContents()
