@@ -21,7 +21,7 @@ def valid_currency(currency):
     return currency
 
 
-def add_cost(storage, day, currency, category, description, amount, pin_id=None):
+def add_cost(storage, day, currency, category, description, amount, pin_id=None, source_ref=None):
     date.fromisoformat(day)
     currency = valid_currency(currency)
     if category not in ("DIRECT", "ALLOCATED"):
@@ -30,12 +30,16 @@ def add_cost(storage, day, currency, category, description, amount, pin_id=None)
         raise ValueError("Cost description required")
     if pin_id is not None and not storage.get("pins", pin_id):
         raise ValueError("Unknown pin ID")
+    if source_ref is not None:
+        source_ref = source_ref.strip()
+        if not source_ref:
+            raise ValueError("Source reference cannot be blank")
     with storage.conn:
         cursor = storage.conn.execute(
             """INSERT INTO cost_entries
-               (date,pin_id,currency,category,description,amount_cents,created_at)
-               VALUES(?,?,?,?,?,?,?)""",
-            (day, pin_id, currency, category, description.strip(), money_cents(amount), utc_now()))
+               (date,pin_id,currency,category,description,amount_cents,created_at,source_ref)
+               VALUES(?,?,?,?,?,?,?,?)""",
+            (day, pin_id, currency, category, description.strip(), money_cents(amount), utc_now(), source_ref))
     return cursor.lastrowid
 
 
