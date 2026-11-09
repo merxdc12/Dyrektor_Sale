@@ -1,7 +1,7 @@
 """Reports tab: read-only preview and manual CSV export."""
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QComboBox,
                              QPushButton, QFileDialog, QMessageBox,
-                             QTableWidget, QTableWidgetItem)
+                             QTableWidget, QTableWidgetItem, QGroupBox)
 from .reports import FIELDS, report_rows, export_report, report_warnings
 
 
@@ -15,7 +15,7 @@ class ReportsPage(QWidget):
         self.currency = QComboBox()
         self.currency.currentIndexChanged.connect(self.refresh_table)
         layout.addWidget(self.currency)
-        refresh = QPushButton("Refresh report")
+        refresh = QPushButton("Refresh export summary")
         refresh.clicked.connect(self.refresh)
         layout.addWidget(refresh)
         self.warning = QLabel()
@@ -25,6 +25,9 @@ class ReportsPage(QWidget):
         self.table.setHorizontalHeaderLabels(FIELDS)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         layout.addWidget(self.table)
+        self.table.setVisible(False)
+        layout.addWidget(QLabel("Financial detail tables and reconciliation remain in ANALYTICS. "
+                                "REPORTS is the dedicated export workspace; no duplicate financial dashboard."))
         export = QPushButton("Export product report CSV")
         export.clicked.connect(self.save_csv)
         layout.addWidget(export)
@@ -57,7 +60,8 @@ class ReportsPage(QWidget):
         for i, row in enumerate(rows):
             for j, field in enumerate(FIELDS):
                 self.table.setItem(i, j, QTableWidgetItem(str(row[field])))
-        self.table.resizeColumnsToContents()
+        # Keep the export data model populated, but avoid repeating the Analytics table.
+        # CSV output remains the canonical detailed report.
         status = report_warnings(self.storage, currency)
         self.warning.setText(
             "{} product rows | {} cost overlaps | {} unresolved. "
