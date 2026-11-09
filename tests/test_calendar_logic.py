@@ -18,9 +18,13 @@ def test_overdue_and_status_filter():
     assert len(filter_entries(entries, "READY", False, now)) == 1
 
 
-def test_publishing_checklist():
+def test_publishing_checklist(tmp_path):
     pin = {"title": "IoT tutorial", "description": "ESP32 guide",
            "destination_url": "https://example.com", "board_id": 3}
-    assert publication_checklist(pin, {"png_path": "/tmp/pin.png"}) == []
+    png = tmp_path / "pin.png"
+    png.write_bytes(b"PNG fixture")
+    assert publication_checklist(pin, {"png_path": str(png)}) == []
+    assert publication_checklist(pin, {"png_path": str(tmp_path / "missing.png")}) == [
+        "PNG file does not exist at saved path"]
     assert publication_checklist(pin, None) == ["Exported PNG asset"]
     assert "Assigned board" in publication_checklist({**pin, "board_id": None}, None)
