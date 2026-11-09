@@ -9,6 +9,8 @@ from .profit_costs import cost_summary, labor_summary
 
 
 def evaluate_product(item, *, min_visits=100, min_conversions=5):
+    if item.get("reconciliation_required"):
+        return {"decision": "TEST", "reason": "Potential duplicate expense across CSV and ledger; reconcile sources before investment.", "evidence": "INCOMPLETE"}
     if item["product_id"] is None:
         return {"decision": "TEST", "reason": "Unassigned product or costs; attribution incomplete.", "evidence": "INCOMPLETE"}
     if item["labor_cents"] is None:
