@@ -166,6 +166,30 @@ class Storage:
                                   for key in ("name", "category", "target_url")))
         ]
 
+    def search_boards(self, query: str = "") -> list[dict]:
+        needle = query.strip().casefold()
+        return [
+            row for row in self.all("boards")
+            if not needle or any(needle in str(row.get(field) or "").casefold()
+                                 for field in ("name", "description", "url"))
+        ]
+
+    def board_pin_count(self, board_id: int) -> int:
+        return int(self.conn.execute(
+            "SELECT COUNT(*) FROM pins WHERE board_id=?", (board_id,)
+        ).fetchone()[0])
+
+    def board_pin_counts(self) -> dict[int, int]:
+        return {int(board_id): int(count) for board_id, count in
+                self.conn.execute("SELECT board_id, COUNT(*) FROM pins "
+                                  "WHERE board_id IS NOT NULL GROUP BY board_id")}
+
+    def delete_board(self, board_id: int) -> bool:
+        """Delete the board; associated pins survive with NULL board_id."""
+        with self.conn:
+            result = self.conn.execute("DELETE FROM boards WHERE id=?", (board_id,))
+        return result.rowcount > 0
+
     def search_pins(self, query: str = "", status: str = "ALL") -> list[dict]:
         if status not in {"ALL", *STATUSES}:
             raise ValueError("Invalid pin status filter")
