@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import QComboBox, QFileDialog, QLabel, QMessageBox, QPushBu
 from .analytics_import import import_metrics, metric_history
 from .analytics_metrics import daily_performance, pin_performance, group_performance
 from .analytics_chart import MetricsChart
+from .business_metrics import import_business_metrics, business_summary
 
 
 def operational_summary(storage):
@@ -69,6 +70,17 @@ class AnalyticsPage(QWidget):
         self.groups = QTableWidget(0, 6)
         self.groups.setHorizontalHeaderLabels(["Board / category", "Pins with data", "Impressions", "Outbound clicks", "Saves", "Outbound CTR %"])
         layout.addWidget(self.groups)
+        layout.addWidget(QLabel("BUSINESS: explicitly attributed data only. Contribution = revenue minus REPORTED costs; not verified net profit."))
+        layout.addWidget(QLabel("CSV: date,pin_id,currency,site_visits,conversions,revenue,cost. No inferred sales from Pinterest clicks."))
+        business_button = QPushButton("Import business CSV")
+        business_button.clicked.connect(self.import_business)
+        layout.addWidget(business_button)
+        self.business_currency = QComboBox()
+        self.business_currency.currentIndexChanged.connect(self.refresh_business)
+        layout.addWidget(self.business_currency)
+        self.business_table = QTableWidget(0, 7)
+        self.business_table.setHorizontalHeaderLabels(["Pin", "Site visits", "Conversions", "Conversion %", "Revenue", "Reported costs", "Contribution"])
+        layout.addWidget(self.business_table)
         self.refresh()
 
     def import_csv(self):
@@ -82,6 +94,37 @@ class AnalyticsPage(QWidget):
             return
         self.refresh()
         QMessageBox.information(self, "Imported", f"Imported {count} records.")
+
+    def import_business(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Import attributed business data", "", "CSV (*.csv)")
+        if not path:
+            return
+        try:
+            count = import_business_metrics(self.storage, path)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Business import failed", str(exc))
+            return
+        self.refresh()
+        QMessageBox.information(self, "Imported", "Imported {} attributed records.".format(count))
+
+    def refresh_business(self):
+        if not hasattr(self, "business_table"):
+            return
+        currency = self.business_currency.currentData()
+        self.business_table.setRowCount(0)
+        if not currency:
+            return
+        rows = business_summary(self.storage, currency)
+        self.business_table.setRowCount(len(rows))
+        for i, item in enumerate(rows):
+            rate = "N/A" if item["conversion_rate"] is None else format(item["conversion_rate"], ".2f")
+            values = (item["title"], item["visits"], item["conversions"], rate,
+                      format(item["revenue_cents"] / 100, ".2f"),
+                      format(item["reported_cost_cents"] / 100, ".2f"),
+                      format(item["contribution_cents"] / 100, ".2f"))
+            for j, value in enumerate(values):
+                self.business_table.setItem(i, j, QTableWidgetItem(str(value)))
+        self.business_table.resizeColumnsToContents()
 
     def refresh(self):
         values = operational_summary(self.storage)
@@ -122,6 +165,16 @@ class AnalyticsPage(QWidget):
         self.pin_filter.blockSignals(False)
         self.refresh_chart()
         self.refresh_groups()
+        selected_currency = self.business_currency.currentData()
+        currencies = [row[0] for row in self.storage.conn.execute(
+            "SELECT DISTINCT currency FROM business_metrics ORDER BY currency")]
+        self.business_currency.blockSignals(True)
+        self.business_currency.clear()
+        for currency in currencies:
+            self.business_currency.addItem(currency, currency)
+        self.business_currency.setCurrentIndex(max(0, self.business_currency.findData(selected_currency)))
+        self.business_currency.blockSignals(False)
+        self.refresh_business()
 
     def refresh_groups(self):
         if not hasattr(self, "groups"):
