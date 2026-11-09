@@ -67,4 +67,4 @@ def test_rejects_mismatched_dimensions_and_invalid_png(tmp_path):
               {"pin_id": 2, "png_path": str(second)}]
     assert any("different dimensions" in issue for issue in validate_slides(slides))
     second.write_bytes(b"not a PNG")
-    assert any("invalid PNG header" in issue for issue in validate_slides(slides))
+    assert any("Invalid PNG signature" in issue for issue in validate_slides(slides))
