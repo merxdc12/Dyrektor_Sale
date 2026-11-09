@@ -6,7 +6,7 @@ from pathlib import Path
 import webbrowser
 from .canva_bridge import project_to_svg, validate_canva_design_id
 
-from PyQt6.QtCore import Qt, QRectF
+from PyQt6.QtCore import Qt, QRectF, QTimer
 from PyQt6.QtGui import QColor, QFont, QImage, QPainter, QPixmap, QPen
 from PyQt6.QtWidgets import (
     QComboBox, QColorDialog, QFileDialog, QFontComboBox, QFormLayout,
@@ -76,10 +76,12 @@ class PinDesigner(QWidget):
         self.background = "#0B1110"
         self.dirty = False
         self._loading = False
+        self._saved_snapshot = None
+        self._canvas_pin_id = None
         self.scene = QGraphicsScene(0, 0, WIDTH, HEIGHT, self)
         self.scene.setSceneRect(0, 0, WIDTH, HEIGHT)
         self.scene.selectionChanged.connect(self.update_selection)
-        self.scene.changed.connect(self.mark_dirty)
+        self.scene.changed.connect(self.schedule_dirty_check)
         layout = QHBoxLayout(self)
         left = QWidget()
         left.setMaximumWidth(290)
@@ -179,8 +181,25 @@ class PinDesigner(QWidget):
         layout.addWidget(self.view, 1)
         self.reset_scene()
         self.apply_template()
+        self._canvas_pin_id = self.pin.currentData()
+        self._saved_snapshot = self.snapshot()
         self.dirty = False
         self.dirty_label.setText("Saved / no pending changes")
+        self._dirty_timer = QTimer(self)
+        self._dirty_timer.setSingleShot(True)
+        self._dirty_timer.timeout.connect(self.check_dirty)
+
+    def snapshot(self):
+        return json.dumps(self.project(), ensure_ascii=False, sort_keys=True)
+
+    def schedule_dirty_check(self, *_args):
+        if not self._loading and hasattr(self, "_dirty_timer"):
+            self._dirty_timer.start(75)
+
+    def check_dirty(self):
+        if not self._loading and self._saved_snapshot is not None:
+            self.dirty = self.snapshot() != self._saved_snapshot
+            self.dirty_label.setText("Unsaved changes" if self.dirty else "Saved / no pending changes")
 
     def mark_dirty(self, *_args):
         if not self._loading and hasattr(self, "dirty_label"):
@@ -188,6 +207,9 @@ class PinDesigner(QWidget):
             self.dirty_label.setText("Unsaved changes")
 
     def confirm_discard(self) -> bool:
+        if hasattr(self, "_dirty_timer"):
+            self._dirty_timer.stop()
+            self.check_dirty()
         if not self.dirty:
             return True
         return QMessageBox.question(
@@ -196,9 +218,9 @@ class PinDesigner(QWidget):
             QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes
 
     def on_pin_changed(self, _index):
-        # Selection alone does not load or discard the current canvas.
-        if self.dirty:
-            self.dirty_label.setText("Unsaved changes — save before loading another pin")
+        # Canvas remains associated with its original pin until explicitly loaded.
+        if self._canvas_pin_id != self.pin.currentData():
+            self.dirty_label.setText("Different pin selected — load its design before editing")
 
     def refresh_layers(self):
         if not hasattr(self, "layers_list"):
@@ -226,7 +248,7 @@ class PinDesigner(QWidget):
                 item.setX(value)
             else:
                 item.setY(value)
-            self.mark_dirty()
+            self.schedule_dirty_check()
 
     def set_zoom(self, _value):
         self.fit()
@@ -301,11 +323,13 @@ class PinDesigner(QWidget):
         if hasattr(self, "dirty_label") and not self.confirm_discard():
             return
         self.background = template["background"]
+        self._canvas_pin_id = self.pin.currentData()
         self.reset_scene()
         self.scene.addItem(LayerText("BUILD SMARTER", 90, 350, 66, template["foreground"]))
         self.scene.addItem(LayerText("ITHutir • Engineering & DIY", 90, 1070, 30, template["foreground"]))
         self.scene.addItem(LayerText("ITHUTIR", 90, 1370, 25, template["foreground"]))
         self.fit()
+        self.schedule_dirty_check()
 
     def fit(self):
         self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
@@ -320,6 +344,7 @@ class PinDesigner(QWidget):
         self.scene.addItem(item)
         self.scene.clearSelection()
         item.setSelected(True)
+        self.schedule_dirty_check()
 
     def add_image(self):
         path, _ = QFileDialog.getOpenFileName(self, "Add image layer", "", "Images (*.png *.jpg *.jpeg *.webp)")
@@ -333,6 +358,7 @@ class PinDesigner(QWidget):
         item = self.selected()
         if isinstance(item, LayerText):
             item.setPlainText(self.text.text())
+            self.schedule_dirty_check()
 
     def change_font(self, font):
         item = self.selected()
@@ -340,6 +366,7 @@ class PinDesigner(QWidget):
             old = item.font()
             old.setFamily(font.family())
             item.setFont(old)
+            self.schedule_dirty_check()
 
     def change_size(self, size):
         item = self.selected()
@@ -347,11 +374,13 @@ class PinDesigner(QWidget):
             font = item.font()
             font.setPointSize(size)
             item.setFont(font)
+            self.schedule_dirty_check()
 
     def change_alignment(self, align):
         item = self.selected()
         if isinstance(item, LayerText):
             item.set_alignment(align)
+            self.schedule_dirty_check()
 
     def change_color(self):
         item = self.selected()
@@ -359,16 +388,19 @@ class PinDesigner(QWidget):
             color = QColorDialog.getColor(item.defaultTextColor(), self)
             if color.isValid():
                 item.setDefaultTextColor(color)
+                self.schedule_dirty_check()
 
     def shift_layer(self, amount):
         item = self.selected()
         if item:
             item.setZValue(item.zValue() + amount)
+            self.schedule_dirty_check()
 
     def delete_selected(self):
         item = self.selected()
         if item and item is not self.background_item:
             self.scene.removeItem(item)
+            self.schedule_dirty_check()
 
     def project(self):
         layers = []
@@ -405,11 +437,15 @@ class PinDesigner(QWidget):
 
     def save_project(self):
         pin_id = self.pin.currentData()
+        if self._canvas_pin_id is not None and pin_id != self._canvas_pin_id:
+            QMessageBox.warning(self, "Different pin selected", "Load the selected pin first, or reselect the canvas pin.")
+            return
         if not self.storage or pin_id is None:
             QMessageBox.warning(self, "Select pin", "Create and select a pin in Pin Library first.")
             return
         try:
             self.storage.save_pin_design(pin_id, json.dumps(self.project(), ensure_ascii=False))
+            self._saved_snapshot = self.snapshot()
             self.dirty = False
             self.dirty_label.setText("Saved / no pending changes")
             QMessageBox.information(self, "Saved", "Editable project saved to SQLite.")
@@ -430,6 +466,8 @@ class PinDesigner(QWidget):
                 self.restore(json.loads(data["project_json"]))
             finally:
                 self._loading = False
+            self._canvas_pin_id = pin_id
+            self._saved_snapshot = self.snapshot()
             self.dirty = False
             self.dirty_label.setText("Saved / no pending changes")
             self.canva_id.setText(data.get("canva_design_id", ""))
@@ -463,6 +501,9 @@ class PinDesigner(QWidget):
 
     def export_png(self):
         pin_id = self.pin.currentData()
+        if self._canvas_pin_id is not None and pin_id != self._canvas_pin_id:
+            QMessageBox.warning(self, "Different pin selected", "Load the selected pin first.")
+            return
         if not self.storage or pin_id is None:
             QMessageBox.warning(self, "Select pin", "Select a pin before exporting.")
             return
@@ -476,6 +517,7 @@ class PinDesigner(QWidget):
         try:
             self.storage.save_pin_design(pin_id, json.dumps(self.project(), ensure_ascii=False),
                                          str(Path(path).resolve()))
+            self._saved_snapshot = self.snapshot()
             self.dirty = False
             self.dirty_label.setText("Saved / no pending changes")
         except Exception as exc:
