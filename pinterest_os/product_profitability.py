@@ -5,6 +5,7 @@ not silently allocated. Business CSV reported costs and ledger costs are
 assumed distinct; operators must avoid entering the same expense twice.
 """
 from .profit_costs import cost_summary, labor_summary, valid_currency
+from .financial_integrity import unresolved_product_ids
 
 
 def product_profitability(storage, currency):
@@ -41,16 +42,18 @@ def product_profitability(storage, currency):
             item["labor_cents"] = (item["labor_cents"] or 0) + details["cost_cents"]
     names = {row[0]: row[1] for row in storage.conn.execute(
         "SELECT id,name FROM products")}
+    flagged_products = unresolved_product_ids(storage, currency)
     output = []
     for product_id, item in results.items():
         item["product_name"] = names.get(product_id, "Unassigned")
+        item["reconciliation_required"] = product_id in flagged_products
         if labor["rate_configured"]:
             item["labor_cents"] = item["labor_cents"] or 0
         known_cost = (item["reported_cost_cents"] + item["direct_cents"]
                       + item["allocated_cents"])
         item["known_cost_cents"] = known_cost
         item["nonlabor_contribution_cents"] = item["revenue_cents"] - known_cost
-        if item["labor_cents"] is None:
+        if item["labor_cents"] is None or item["reconciliation_required"]:
             item["estimated_contribution_cents"] = None
             item["roi_percent"] = None
         else:
