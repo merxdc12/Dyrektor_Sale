@@ -6,6 +6,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS pin_designs (
+ pin_id INTEGER PRIMARY KEY REFERENCES pins(id) ON DELETE CASCADE,
+ project_json TEXT NOT NULL,
+ png_path TEXT NOT NULL DEFAULT '',
+ updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS products (
  id INTEGER PRIMARY KEY, name TEXT NOT NULL, target_url TEXT NOT NULL DEFAULT '',
  category TEXT NOT NULL DEFAULT 'POD', created_at TEXT NOT NULL
@@ -248,6 +254,32 @@ class Storage:
         with self.conn:
             cursor = self.conn.execute("DELETE FROM pin_schedule WHERE id=?", (entry_id,))
         return cursor.rowcount > 0
+
+    def save_pin_design(self, pin_id: int, project_json: str, png_path: str | None = None) -> None:
+        if not self.get("pins", pin_id):
+            raise ValueError("Pin does not exist")
+        import json
+        data = json.loads(project_json)
+        if not isinstance(data, dict) or data.get("version") != 1:
+            raise ValueError("Unsupported design project")
+        with self.conn:
+            self.conn.execute(
+                """INSERT INTO pin_designs(pin_id,project_json,png_path,updated_at)
+                   VALUES(?,?,COALESCE(?,''),?)
+                   ON CONFLICT(pin_id) DO UPDATE SET
+                   project_json=excluded.project_json,
+                   png_path=COALESCE(?,pin_designs.png_path),
+                   updated_at=excluded.updated_at""",
+                (pin_id, project_json, png_path, utc_now(), png_path),
+            )
+
+    def get_pin_design(self, pin_id: int) -> dict | None:
+        self.conn.row_factory = sqlite3.Row
+        try:
+            row = self.conn.execute("SELECT * FROM pin_designs WHERE pin_id=?", (pin_id,)).fetchone()
+            return dict(row) if row else None
+        finally:
+            self.conn.row_factory = None
 
     def close(self) -> None:
         self.conn.close()
