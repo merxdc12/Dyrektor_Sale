@@ -47,6 +47,16 @@ CREATE TABLE IF NOT EXISTS pinterest_metrics (
  saves INTEGER NOT NULL CHECK(saves >= 0),
  PRIMARY KEY(date,pin_id)
 );
+CREATE TABLE IF NOT EXISTS business_metrics (
+ date TEXT NOT NULL,
+ pin_id INTEGER NOT NULL REFERENCES pins(id) ON DELETE CASCADE,
+ currency TEXT NOT NULL CHECK(length(currency)=3),
+ site_visits INTEGER NOT NULL CHECK(site_visits>=0),
+ conversions INTEGER NOT NULL CHECK(conversions>=0),
+ revenue_cents INTEGER NOT NULL CHECK(revenue_cents>=0),
+ reported_cost_cents INTEGER NOT NULL CHECK(reported_cost_cents>=0),
+ PRIMARY KEY(date,pin_id,currency)
+);
 CREATE TABLE IF NOT EXISTS work_sessions (
  id INTEGER PRIMARY KEY, started_at TEXT NOT NULL,
  ended_at TEXT, active_seconds INTEGER NOT NULL DEFAULT 0
