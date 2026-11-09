@@ -19,6 +19,7 @@ from .analytics import AnalyticsPage
 from .reports_page import ReportsPage
 from .time_page import TimePage
 from .settings_page import SettingsPage
+from .help_page import HelpPage
 from .publishing import PublishingPage
 from .editor import RecordEditor
 from .designer import PinDesigner
@@ -171,15 +172,8 @@ class MainWindow(QMainWindow):
                 self.publishing_page = PublishingPage(self.storage)
                 content.addWidget(self.publishing_page, 1)
             elif name == "HELP":
-                panel, body = card()
-                body.addWidget(label("Getting started", "Heading"))
-                body.addWidget(label(
-                    "1. Add a product in FILE.\n2. Create a board in BOARD.\n"
-                    "3. Create a pin draft in PIN and link both records.\n"
-                    "4. Open Pinterest in PUBLISHING and publish manually.\n"
-                    "5. TIME records active work. SETTINGS controls appearance."
-                ))
-                content.addWidget(panel)
+                self.help_page = HelpPage(self.storage)
+                content.addWidget(self.help_page, 1)
             else:
                 panel, body = card()
                 body.addWidget(label("Planned module", "Heading"))
