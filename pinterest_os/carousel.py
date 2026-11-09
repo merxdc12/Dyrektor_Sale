@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QComboBox, QFileDialog, QHBoxLayout, QInputDialog, QLabel, QListWidget,
     QMessageBox, QPushButton, QVBoxLayout, QWidget,
@@ -27,7 +28,22 @@ class CarouselPage(QWidget):
         header.addWidget(new)
         layout.addLayout(header)
         self.slides = QListWidget()
+        self.slides.currentRowChanged.connect(self.update_preview)
         layout.addWidget(self.slides)
+        self.preview_label = QLabel("Select a slide to preview")
+        self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview_label.setMinimumHeight(300)
+        layout.addWidget(self.preview_label)
+        self.slide_info = QLabel("No slides")
+        layout.addWidget(self.slide_info)
+        navigation = QHBoxLayout()
+        previous = QPushButton("Previous slide")
+        previous.clicked.connect(lambda: self.navigate(-1))
+        following = QPushButton("Next slide")
+        following.clicked.connect(lambda: self.navigate(1))
+        navigation.addWidget(previous)
+        navigation.addWidget(following)
+        layout.addLayout(navigation)
         buttons = QHBoxLayout()
         for name, callback in (
             ("Add pin", self.add_pin), ("Remove", self.remove_pin),
@@ -62,6 +78,35 @@ class CarouselPage(QWidget):
             if not row.get("png_path") or not Path(row["png_path"]).is_file():
                 label += "  [PNG missing]"
             self.slides.addItem(label)
+        if self.slides.count():
+            self.slides.setCurrentRow(0)
+        else:
+            self.update_preview(-1)
+
+    def navigate(self, delta: int):
+        if self.slides.count():
+            row = max(0, min(self.slides.count() - 1, self.slides.currentRow() + delta))
+            self.slides.setCurrentRow(row)
+
+    def update_preview(self, row: int):
+        carousel_id = self.carousel.currentData()
+        slides = self.storage.carousel_slides(carousel_id) if carousel_id is not None else []
+        if row < 0 or row >= len(slides):
+            self.preview_label.clear()
+            self.preview_label.setText("Select a slide to preview")
+            self.slide_info.setText(f"{len(slides)} slides")
+            return
+        slide = slides[row]
+        self.slide_info.setText(f"Slide {row + 1} of {len(slides)} — {slide['title']}")
+        path = slide.get("png_path") or ""
+        pixmap = QPixmap(path) if path and Path(path).is_file() else QPixmap()
+        if pixmap.isNull():
+            self.preview_label.clear()
+            self.preview_label.setText("PNG missing or unreadable. Export this pin again.")
+            return
+        self.preview_label.setPixmap(pixmap.scaled(
+            QSize(260, 300), Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation))
 
     def create_carousel(self):
         title, ok = QInputDialog.getText(self, "New carousel", "Carousel title:")
