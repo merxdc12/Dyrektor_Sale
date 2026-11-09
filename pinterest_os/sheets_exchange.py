@@ -68,3 +68,64 @@ def export_metric_rows(storage):
     return [dict(zip(METRIC_FIELDS, row)) for row in storage.conn.execute(
         """SELECT date,pin_id,impressions,outbound_clicks,saves
            FROM pinterest_metrics ORDER BY date,pin_id""")]
+
+
+def ensure_new_pins(storage, records):
+    """Fail closed on duplicate metadata; do not silently re-import a worksheet."""
+    existing = {
+        (r["title"], r["description"], r["destination_url"], r["status"],
+         r["board_id"], r["product_id"])
+        for r in storage.all("pins")
+    }
+    seen = set()
+    for row in records:
+        signature = row[:6]
+        if signature in existing or signature in seen:
+            raise ValueError("Duplicate pin detected; import cancelled to avoid duplicate records")
+        seen.add(signature)
+
+
+def parse_metric_rows(rows, storage):
+    """Validate full import before any SQLite mutation; local pin IDs only."""
+    from datetime import date
+    if not rows or list(rows[0]) != list(METRIC_FIELDS):
+        raise ValueError("Expected metric columns: " + ", ".join(METRIC_FIELDS))
+    if len(rows) > 10001:
+        raise ValueError("Too many metric rows")
+    pins = {int(pin["id"]) for pin in storage.all("pins")}
+    seen = set()
+    parsed = []
+    for index, values in enumerate(rows[1:], 2):
+        if len(values) != len(METRIC_FIELDS):
+            raise ValueError(f"Row {index}: expected 5 cells")
+        day, pin, impressions, clicks, saves = [str(x).strip() for x in values]
+        try:
+            if date.fromisoformat(day).isoformat() != day:
+                raise ValueError()
+            pin_id = int(pin)
+            counts = [int(x) for x in (impressions, clicks, saves)]
+        except ValueError as exc:
+            raise ValueError(f"Row {index}: invalid date, pin ID or counts") from exc
+        if pin_id not in pins or any(v < 0 for v in counts):
+            raise ValueError(f"Row {index}: unknown pin or negative count")
+        key = (day, pin_id)
+        if key in seen:
+            raise ValueError(f"Row {index}: duplicate metric key")
+        seen.add(key)
+        parsed.append((day, pin_id, *counts))
+    return parsed
+
+
+def import_metric_rows(storage, records):
+    """Only NEW date/pin records are allowed; existing history cannot be overwritten."""
+    with storage.conn:
+        existing = {
+            (day, pin) for day, pin in storage.conn.execute(
+                "SELECT date,pin_id FROM pinterest_metrics")
+        }
+        if any(row[:2] in existing for row in records):
+            raise ValueError("Existing date/pin metrics conflict; no rows imported")
+        storage.conn.executemany(
+            """INSERT INTO pinterest_metrics(date,pin_id,impressions,outbound_clicks,saves)
+               VALUES(?,?,?,?,?)""", records)
+    return len(records)
