@@ -9,12 +9,14 @@ from pathlib import Path
 from PyQt6.QtCore import Qt, QStandardPaths, QTimer
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFrame, QHBoxLayout, QHeaderView, QLabel,
-    QMainWindow, QMessageBox, QPushButton, QScrollArea,
+    QMainWindow, QMessageBox, QPushButton, QScrollArea, QFileDialog, QTabWidget,
     QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from .calendar import CalendarPage
 from .editor import RecordEditor
+from .designer import PinDesigner
+from .csv_io import import_pins, export_pins
 from .storage import Storage
 from .theme import ThemeManager
 
@@ -120,7 +122,16 @@ class MainWindow(QMainWindow):
             content.addWidget(label(subtitle, "Muted"))
             if name in {"FILE", "PIN", "BOARD"}:
                 table = {"FILE": "products", "PIN": "pins", "BOARD": "boards"}[name]
-                self.build_catalog(content, table)
+                if name == "PIN":
+                    tabs = QTabWidget()
+                    catalog = QWidget()
+                    catalog_layout = QVBoxLayout(catalog)
+                    self.build_catalog(catalog_layout, table)
+                    tabs.addTab(catalog, "Pin Library / CSV")
+                    tabs.addTab(PinDesigner(), "Pin Designer")
+                    content.addWidget(tabs, 1)
+                else:
+                    self.build_catalog(content, table)
             elif name == "CALENDAR":
                 self.calendar_page = CalendarPage(self.storage)
                 content.addWidget(self.calendar_page, 1)
@@ -209,6 +220,13 @@ class MainWindow(QMainWindow):
         refresh = QPushButton("Refresh")
         refresh.clicked.connect(lambda checked=False, t=table: self.refresh(t))
         actions.addWidget(refresh)
+        if table == "pins":
+            import_button = QPushButton("Import CSV")
+            import_button.clicked.connect(self.import_csv)
+            actions.addWidget(import_button)
+            export_button = QPushButton("Export CSV")
+            export_button.clicked.connect(self.export_csv)
+            actions.addWidget(export_button)
         body.addLayout(actions)
         grid = QTableWidget()
         grid.setAlternatingRowColors(True)
@@ -222,6 +240,27 @@ class MainWindow(QMainWindow):
         body.addWidget(grid)
         content.addWidget(panel, 1)
         self.tables[table] = grid
+
+    def import_csv(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "Import pin metadata", "", "CSV (*.csv)")
+        if not path:
+            return
+        try:
+            count = import_pins(self.storage, path)
+            self.refresh("pins")
+            QMessageBox.information(self, "Import complete", f"Imported {count} pins.")
+        except (ValueError, OSError, UnicodeError, Exception) as exc:
+            QMessageBox.warning(self, "Import failed", str(exc))
+
+    def export_csv(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(self, "Export pin metadata", "ithutir-pins.csv", "CSV (*.csv)")
+        if not path:
+            return
+        try:
+            export_pins(self.storage, path)
+            QMessageBox.information(self, "Export complete", f"Saved: {path}")
+        except OSError as exc:
+            QMessageBox.warning(self, "Export failed", str(exc))
 
     def refresh(self, table: str) -> None:
         grid = self.tables[table]
