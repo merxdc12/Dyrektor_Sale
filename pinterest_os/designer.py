@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QComboBox, QColorDialog, QFileDialog, QFontComboBox, QFormLayout,
     QGraphicsItem, QGraphicsPixmapItem, QGraphicsRectItem, QGraphicsScene,
     QGraphicsTextItem, QGraphicsView, QHBoxLayout, QLabel, QLineEdit,
-    QMessageBox, QPushButton, QSpinBox, QVBoxLayout, QWidget,
+    QMessageBox, QPushButton, QSpinBox, QVBoxLayout, QWidget, QListWidget,
 )
 
 WIDTH, HEIGHT = 1000, 1500
@@ -74,9 +74,12 @@ class PinDesigner(QWidget):
         super().__init__(parent)
         self.storage = storage
         self.background = "#0B1110"
+        self.dirty = False
+        self._loading = False
         self.scene = QGraphicsScene(0, 0, WIDTH, HEIGHT, self)
         self.scene.setSceneRect(0, 0, WIDTH, HEIGHT)
         self.scene.selectionChanged.connect(self.update_selection)
+        self.scene.changed.connect(self.mark_dirty)
         layout = QHBoxLayout(self)
         left = QWidget()
         left.setMaximumWidth(290)
@@ -84,6 +87,7 @@ class PinDesigner(QWidget):
         self.pin = QComboBox()
         form.addRow("Linked pin", self.pin)
         self.reload_pins()
+        self.pin.currentIndexChanged.connect(self.on_pin_changed)
         load = QPushButton("Load pin project")
         load.clicked.connect(self.load_pin)
         form.addRow(load)
@@ -126,6 +130,29 @@ class PinDesigner(QWidget):
         remove = QPushButton("Delete selected layer")
         remove.clicked.connect(self.delete_selected)
         form.addRow(remove)
+        self.layers_list = QListWidget()
+        self.layers_list.setMaximumHeight(130)
+        self.layers_list.currentRowChanged.connect(self.select_layer_row)
+        form.addRow("Layers (top first)", self.layers_list)
+        self.x_position = QSpinBox()
+        self.x_position.setRange(-5000, 5000)
+        self.x_position.valueChanged.connect(lambda value: self.set_position("x", value))
+        form.addRow("X position", self.x_position)
+        self.y_position = QSpinBox()
+        self.y_position.setRange(-5000, 5000)
+        self.y_position.valueChanged.connect(lambda value: self.set_position("y", value))
+        form.addRow("Y position", self.y_position)
+        self.zoom = QSpinBox()
+        self.zoom.setRange(10, 300)
+        self.zoom.setSuffix("%")
+        self.zoom.setValue(100)
+        self.zoom.valueChanged.connect(self.set_zoom)
+        form.addRow("Zoom", self.zoom)
+        preview = QPushButton("Preview at canvas size")
+        preview.clicked.connect(self.preview)
+        form.addRow(preview)
+        self.dirty_label = QLabel("Saved / no pending changes")
+        form.addRow(self.dirty_label)
         save = QPushButton("Save editable project")
         save.clicked.connect(self.save_project)
         form.addRow(save)
@@ -152,6 +179,80 @@ class PinDesigner(QWidget):
         layout.addWidget(self.view, 1)
         self.reset_scene()
         self.apply_template()
+        self.dirty = False
+        self.dirty_label.setText("Saved / no pending changes")
+
+    def mark_dirty(self, *_args):
+        if not self._loading and hasattr(self, "dirty_label"):
+            self.dirty = True
+            self.dirty_label.setText("Unsaved changes")
+
+    def confirm_discard(self) -> bool:
+        if not self.dirty:
+            return True
+        return QMessageBox.question(
+            self, "Unsaved design", "Discard unsaved design changes?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes
+
+    def on_pin_changed(self, _index):
+        # Selection alone does not load or discard the current canvas.
+        if self.dirty:
+            self.dirty_label.setText("Unsaved changes — save before loading another pin")
+
+    def refresh_layers(self):
+        if not hasattr(self, "layers_list"):
+            return
+        items = [x for x in self.scene.items() if isinstance(x, (LayerText, LayerImage))]
+        self.layers_list.blockSignals(True)
+        self.layers_list.clear()
+        for item in items:
+            name = item.toPlainText()[:35] if isinstance(item, LayerText) else Path(item.source_path).name
+            self.layers_list.addItem(("Text: " if isinstance(item, LayerText) else "Image: ") + name)
+            if item.isSelected():
+                self.layers_list.setCurrentRow(len(items) - 1 if False else items.index(item))
+        self.layers_list.blockSignals(False)
+
+    def select_layer_row(self, row):
+        items = [x for x in self.scene.items() if isinstance(x, (LayerText, LayerImage))]
+        if 0 <= row < len(items):
+            self.scene.clearSelection()
+            items[row].setSelected(True)
+
+    def set_position(self, axis, value):
+        item = self.selected()
+        if isinstance(item, (LayerText, LayerImage)):
+            if axis == "x":
+                item.setX(value)
+            else:
+                item.setY(value)
+            self.mark_dirty()
+
+    def set_zoom(self, _value):
+        self.fit()
+
+    def preview(self):
+        image = self.render_image()
+        from PyQt6.QtWidgets import QDialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Pin preview — {WIDTH} × {HEIGHT}")
+        dialog.resize(540, 740)
+        layout = QVBoxLayout(dialog)
+        display = QLabel()
+        display.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        display.setPixmap(QPixmap.fromImage(image).scaled(
+            480, 650, Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation))
+        layout.addWidget(display)
+        dialog.exec()
+
+    def render_image(self):
+        image = QImage(WIDTH, HEIGHT, QImage.Format.Format_ARGB32)
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
+        self.scene.render(painter, QRectF(0, 0, WIDTH, HEIGHT), self.scene.sceneRect())
+        painter.end()
+        return image
 
     def reload_pins(self):
         old = self.pin.currentData()
@@ -168,6 +269,12 @@ class PinDesigner(QWidget):
 
     def update_selection(self):
         item = self.selected()
+        self.refresh_layers()
+        for widget, value in ((self.x_position, round(item.x()) if item else 0),
+                              (self.y_position, round(item.y()) if item else 0)):
+            widget.blockSignals(True)
+            widget.setValue(value)
+            widget.blockSignals(False)
         if not isinstance(item, LayerText):
             return
         self.text.blockSignals(True)
@@ -191,6 +298,8 @@ class PinDesigner(QWidget):
 
     def apply_template(self):
         template = TEMPLATES[self.template.currentText()]
+        if hasattr(self, "dirty_label") and not self.confirm_discard():
+            return
         self.background = template["background"]
         self.reset_scene()
         self.scene.addItem(LayerText("BUILD SMARTER", 90, 350, 66, template["foreground"]))
@@ -200,6 +309,7 @@ class PinDesigner(QWidget):
 
     def fit(self):
         self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        self.view.scale(self.zoom.value() / 100, self.zoom.value() / 100)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -298,17 +408,30 @@ class PinDesigner(QWidget):
         if not self.storage or pin_id is None:
             QMessageBox.warning(self, "Select pin", "Create and select a pin in Pin Library first.")
             return
-        self.storage.save_pin_design(pin_id, json.dumps(self.project(), ensure_ascii=False))
-        QMessageBox.information(self, "Saved", "Editable project saved to SQLite.")
+        try:
+            self.storage.save_pin_design(pin_id, json.dumps(self.project(), ensure_ascii=False))
+            self.dirty = False
+            self.dirty_label.setText("Saved / no pending changes")
+            QMessageBox.information(self, "Saved", "Editable project saved to SQLite.")
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Save failed", str(exc))
 
     def load_pin(self):
+        if not self.confirm_discard():
+            return
         pin_id = self.pin.currentData()
         data = self.storage.get_pin_design(pin_id) if self.storage and pin_id else None
         if not data:
             QMessageBox.information(self, "No project", "No saved design for this pin.")
             return
         try:
-            self.restore(json.loads(data["project_json"]))
+            self._loading = True
+            try:
+                self.restore(json.loads(data["project_json"]))
+            finally:
+                self._loading = False
+            self.dirty = False
+            self.dirty_label.setText("Saved / no pending changes")
             self.canva_id.setText(data.get("canva_design_id", ""))
         except (ValueError, KeyError, TypeError) as exc:
             QMessageBox.warning(self, "Cannot load", str(exc))
@@ -346,18 +469,15 @@ class PinDesigner(QWidget):
         path, _ = QFileDialog.getSaveFileName(self, "Export pin", f"ithutir-pin-{pin_id}.png", "PNG (*.png)")
         if not path:
             return
-        image = QImage(WIDTH, HEIGHT, QImage.Format.Format_ARGB32)
-        image.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(image)
-        self.scene.clearSelection()
-        self.scene.render(painter, QRectF(0, 0, WIDTH, HEIGHT), self.scene.sceneRect())
-        painter.end()
-        if not image.save(path, "PNG"):
+        image = self.render_image()
+        if image.width() != WIDTH or image.height() != HEIGHT or not image.save(path, "PNG"):
             QMessageBox.warning(self, "Export failed", "Cannot save PNG.")
             return
         try:
             self.storage.save_pin_design(pin_id, json.dumps(self.project(), ensure_ascii=False),
                                          str(Path(path).resolve()))
+            self.dirty = False
+            self.dirty_label.setText("Saved / no pending changes")
         except Exception as exc:
             QMessageBox.warning(self, "Link failed", f"PNG saved but SQLite link failed: {exc}")
             return
