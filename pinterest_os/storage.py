@@ -327,6 +327,36 @@ class Storage:
             )
         return cursor.rowcount > 0
 
+    def confirm_manual_publication(self, entry_id: int) -> None:
+        """Atomically mark a schedule and pin published, refusing repeated confirmation."""
+        with self.conn:
+            row = self.conn.execute(
+                """SELECT s.pin_id, s.status, p.status
+                   FROM pin_schedule s JOIN pins p ON p.id=s.pin_id
+                   WHERE s.id=?""", (entry_id,)).fetchone()
+            if row is None:
+                raise ValueError("Calendar entry no longer exists")
+            pin_id, schedule_status, pin_status = row
+            if schedule_status not in ("PLANNED", "READY"):
+                raise ValueError("Schedule already completed or cancelled")
+            if pin_status == "PUBLISHED":
+                raise ValueError("Pin already marked as published")
+            result = self.conn.execute(
+                """UPDATE pin_schedule SET status='PUBLISHED'
+                   WHERE id=? AND status IN ('PLANNED','READY')""", (entry_id,))
+            if result.rowcount != 1:
+                raise ValueError("Schedule status changed")
+            result = self.conn.execute(
+                """UPDATE pins SET status='PUBLISHED'
+                   WHERE id=? AND status!='PUBLISHED'""", (pin_id,))
+            if result.rowcount != 1:
+                raise ValueError("Pin status changed")
+            # Any other pending schedule for this same pin must not remain in the queue.
+            self.conn.execute(
+                """UPDATE pin_schedule SET status='CANCELLED'
+                   WHERE pin_id=? AND id!=? AND status IN ('PLANNED','READY')""",
+                (pin_id, entry_id))
+
     def get_schedule(self, entry_id: int) -> dict | None:
         self.conn.row_factory = sqlite3.Row
         try:
