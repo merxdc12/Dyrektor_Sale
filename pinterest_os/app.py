@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QInputDialog,
 )
 
+from .board_logic import CATEGORIES, board_plan, board_seo_issues
 from .calendar import CalendarPage
 from .editor import RecordEditor
 from .designer import PinDesigner
@@ -539,6 +540,12 @@ class MainWindow(QMainWindow):
             export_button.clicked.connect(self.export_csv)
             actions.addWidget(export_button)
         if table == "boards":
+            assign = QPushButton("Assign pin to board")
+            assign.clicked.connect(self.assign_pin_to_board)
+            actions.addWidget(assign)
+            plan = QPushButton("Content plan")
+            plan.clicked.connect(self.show_board_plan)
+            actions.addWidget(plan)
             remove = QPushButton("Delete board")
             remove.clicked.connect(self.delete_selected_board)
             actions.addWidget(remove)
@@ -570,6 +577,12 @@ class MainWindow(QMainWindow):
             self.board_search.setPlaceholderText("Search board name, SEO description or URL")
             self.board_search.textChanged.connect(lambda _: self.refresh("boards"))
             body.addWidget(self.board_search)
+            self.board_category = QComboBox()
+            self.board_category.addItem("ALL", "ALL")
+            for category in CATEGORIES:
+                self.board_category.addItem(category, category)
+            self.board_category.currentIndexChanged.connect(lambda _: self.refresh("boards"))
+            body.addWidget(self.board_category)
             self.board_summary = label("Board statistics")
             body.addWidget(self.board_summary)
         if table == "products":
@@ -598,6 +611,53 @@ class MainWindow(QMainWindow):
         body.addWidget(grid)
         content.addWidget(panel, 1)
         self.tables[table] = grid
+
+    def assign_pin_to_board(self) -> None:
+        board_id = self.selected_board_id()
+        if board_id is None:
+            QMessageBox.information(self, "Select board", "Select a board first.")
+            return
+        pins = self.storage.all("pins")
+        if not pins:
+            QMessageBox.information(self, "No pins", "Create a pin in PIN first.")
+            return
+        options = [f"#{pin['id']} {pin['title']} [{pin['status']}]" for pin in pins]
+        selected, accepted = QInputDialog.getItem(
+            self, "Assign pin", "Choose pin:", options, 0, False)
+        if not accepted:
+            return
+        pin = pins[options.index(selected)]
+        try:
+            self.storage.update("pins", pin["id"], board_id=board_id)
+            self.refresh("boards")
+            self.refresh("pins")
+            self.calendar_page.refresh()
+        except Exception as exc:
+            QMessageBox.warning(self, "Assignment failed", str(exc))
+
+    def show_board_plan(self) -> None:
+        board_id = self.selected_board_id()
+        if board_id is None:
+            QMessageBox.information(self, "Select board", "Select a board first.")
+            return
+        board = self.storage.get("boards", board_id)
+        if not board:
+            return
+        from datetime import date
+        planned = board_plan(board, self.storage.all("pins"), start=date.today())
+        issues = board_seo_issues(board["name"], board["description"], board["url"])
+        stats = {status: 0 for status in ("DRAFT", "IN_REVIEW", "READY", "PUBLISHED")}
+        for pin in self.storage.all("pins"):
+            if pin["board_id"] == board_id:
+                stats[pin["status"]] += 1
+        report = (f"Board: {board['name']}\\nCategory: {board['category']}\\n"
+                  + "Statuses: " + ", ".join(f"{k}: {v}" for k, v in stats.items())
+                  + "\\n\\nSEO review:\\n"
+                  + ("\\n".join(issues) if issues else "No editorial warnings")
+                  + "\\n\\nSuggested content dates (not scheduled):\\n"
+                  + ("\\n".join(f"{p['date']} — #{p['pin_id']} {p['title']} ({p['status']})"
+                               for p in planned) if planned else "No pending pins"))
+        QMessageBox.information(self, "Board content plan", report)
 
     def selected_board_id(self) -> int | None:
         grid = self.tables["boards"]
@@ -754,7 +814,9 @@ class MainWindow(QMainWindow):
                 if table == "products" else
                 self.storage.search_pins(self.pin_search.text(), self.pin_status.currentData())
                 if table == "pins" else
-                self.storage.search_boards(self.board_search.text())
+                [board for board in self.storage.search_boards(self.board_search.text())
+                 if self.board_category.currentData() == "ALL"
+                 or board["category"] == self.board_category.currentData()]
                 if table == "boards" else self.storage.all(table))
         if table == "boards":
             counts = self.storage.board_pin_counts()
@@ -764,7 +826,7 @@ class MainWindow(QMainWindow):
                 f"Unassigned pins: {sum(1 for p in self.storage.all('pins') if p['board_id'] is None)}")
         fields = {
             "products": ("id", "name", "category", "target_url"),
-            "boards": ("id", "name", "url", "description", "linked_pins"),
+            "boards": ("id", "name", "category", "url", "description", "linked_pins"),
             "pins": ("id", "title", "status", "board_id", "product_id", "destination_url"),
         }[table]
         grid.setColumnCount(len(fields))
