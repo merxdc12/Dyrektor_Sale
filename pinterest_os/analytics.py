@@ -7,6 +7,7 @@ from .analytics_metrics import daily_performance, pin_performance, group_perform
 from .analytics_chart import MetricsChart
 from .business_metrics import import_business_metrics, business_summary
 from .profit_panel import ProfitCostsPanel
+from .product_profitability import product_profitability
 
 
 def operational_summary(storage):
@@ -84,6 +85,11 @@ class AnalyticsPage(QWidget):
         layout.addWidget(self.business_table)
         self.profit_costs = ProfitCostsPanel(storage)
         layout.addWidget(self.profit_costs)
+        layout.addWidget(QLabel("PRODUCT PROFITABILITY — estimated contribution, NOT verified net profit."))
+        layout.addWidget(QLabel("Current product assignments; unassigned entries remain separate. Avoid double-counting imported and ledger costs."))
+        self.product_table = QTableWidget(0, 8)
+        self.product_table.setHorizontalHeaderLabels(["Product", "Revenue", "Reported cost", "Direct cost", "Allocated cost", "Labor estimate", "Estimated contribution", "ROI %"])
+        layout.addWidget(self.product_table)
         self.refresh()
 
     def import_csv(self):
@@ -180,6 +186,25 @@ class AnalyticsPage(QWidget):
         self.refresh_business()
         self.profit_costs.storage = self.storage
         self.profit_costs.refresh()
+        self.refresh_products()
+
+    def refresh_products(self):
+        currency = self.business_currency.currentData() or self.profit_costs.currency.text().strip().upper()
+        try:
+            rows = product_profitability(self.storage, currency)
+        except ValueError:
+            rows = []
+        self.product_table.setRowCount(len(rows))
+        for i, item in enumerate(rows):
+            money = lambda cents: 'N/A' if cents is None else format(cents / 100, '.2f')
+            roi = 'N/A' if item['roi_percent'] is None else format(item['roi_percent'], '.2f')
+            values = (item['product_name'], money(item['revenue_cents']),
+                      money(item['reported_cost_cents']), money(item['direct_cents']),
+                      money(item['allocated_cents']), money(item['labor_cents']),
+                      money(item['estimated_contribution_cents']), roi)
+            for j, value in enumerate(values):
+                self.product_table.setItem(i, j, QTableWidgetItem(str(value)))
+        self.product_table.resizeColumnsToContents()
 
     def refresh_groups(self):
         if not hasattr(self, "groups"):
