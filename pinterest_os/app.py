@@ -9,7 +9,7 @@ from pathlib import Path
 from PyQt6.QtCore import Qt, QStandardPaths, QTimer
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFrame, QHBoxLayout, QHeaderView, QLabel,
-    QMainWindow, QMessageBox, QPushButton, QScrollArea, QSplitter,
+    QMainWindow, QMessageBox, QPushButton, QScrollArea,
     QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -85,15 +85,17 @@ class MainWindow(QMainWindow):
         head.addLayout(row)
         outer.addWidget(header)
 
-        split = QSplitter(Qt.Orientation.Horizontal)
-        outer.addWidget(split, 1)
-        sidebar = QFrame()
-        sidebar.setObjectName("Navigation")
-        sidebar.setMinimumWidth(160)
-        sidebar.setMaximumWidth(230)
-        nav = QVBoxLayout(sidebar)
-        nav.setContentsMargins(10, 16, 10, 12)
-        nav.addWidget(label("WORKSPACE", "Muted"))
+        navigation = QScrollArea()
+        navigation.setWidgetResizable(True)
+        navigation.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        navigation.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        navigation.setMaximumHeight(78)
+        navigation.setMinimumHeight(65)
+        nav_frame = QFrame()
+        nav_frame.setObjectName("Navigation")
+        nav = QHBoxLayout(nav_frame)
+        nav.setContentsMargins(10, 8, 10, 8)
+        nav.setSpacing(5)
         for name in MENU:
             button = QPushButton(name)
             button.setObjectName("NavButton")
@@ -102,11 +104,11 @@ class MainWindow(QMainWindow):
             nav.addWidget(button)
             self.nav_buttons[name] = button
         nav.addStretch()
-        split.addWidget(sidebar)
+        navigation.setWidget(nav_frame)
+        outer.addWidget(navigation)
 
         self.pages = QStackedWidget()
-        split.addWidget(self.pages)
-        split.setStretchFactor(1, 1)
+        outer.addWidget(self.pages, 1)
         for name in MENU:
             page = QWidget()
             content = QVBoxLayout(page)
