@@ -25,9 +25,8 @@ def test_reports_page_empty_and_project_switch(tmp_path):
         page.storage = second
         page.refresh()
         assert page.currency.currentData() == "USD"
-        assert page.table.rowCount() == 1
-        assert page.table.item(0, 1).text() == "Guide"
-        assert page.table.item(0, 12).text() == ""
+        assert "1 product rows" in page.summary.text()
+        assert not hasattr(page, "table")
         page.close()
     finally:
         first.close()
