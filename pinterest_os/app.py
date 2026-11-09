@@ -416,6 +416,7 @@ class MainWindow(QMainWindow):
         self.time_page.storage = target
         self.time_page.set_current(0)
         self.time_page.reset_attribution()
+        self.settings_page.set_storage(target)
         for table in self.tables:
             self.refresh(table)
         self.project_label.setText("Active: " + str(folder))
