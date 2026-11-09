@@ -4,7 +4,7 @@ import webbrowser
 from urllib.parse import urlparse
 from PyQt6.QtCore import QSettings
 from .google_sheets_link import parse_sheet_url, preview_public_sheet
-from . import sheets_api
+from . import sheets_api, sheets_exchange
 from .product_io import validate_products, COLUMNS
 from .reports import report_rows, FIELDS as REPORT_FIELDS
 from datetime import datetime, timezone
@@ -100,6 +100,17 @@ class SettingsPage(QWidget):
         export_reports = QPushButton("Export USD report to NEW worksheet")
         export_reports.clicked.connect(lambda: self.export_google("reports"))
         sheet_form.addRow(export_reports)
+        import_pins = QPushButton("Import selected worksheet as NEW pins")
+        import_pins.clicked.connect(self.import_google_pins)
+        sheet_form.addRow(import_pins)
+        for kind, caption in (
+            ("pins", "Export pins to NEW worksheet"),
+            ("time", "Export TIME entries to NEW worksheet"),
+            ("analytics", "Export imported Pinterest metrics to NEW worksheet"),
+        ):
+            button = QPushButton(caption)
+            button.clicked.connect(lambda checked=False, item=kind: self.export_google(item))
+            sheet_form.addRow(button)
         layout.addWidget(sheets)
         layout.addWidget(QLabel("Workspace diagnostics (read-only)"))
         self.diagnostics = QLabel()
@@ -301,6 +312,15 @@ class SettingsPage(QWidget):
             elif kind == "reports":
                 headers = REPORT_FIELDS
                 records = report_rows(self.storage, "USD")
+            elif kind == "pins":
+                headers = sheets_exchange.PIN_FIELDS
+                records = sheets_exchange.export_pin_rows(self.storage)
+            elif kind == "time":
+                headers = sheets_exchange.TIME_FIELDS
+                records = sheets_exchange.export_time_rows(self.storage)
+            elif kind == "analytics":
+                headers = sheets_exchange.METRIC_FIELDS
+                records = sheets_exchange.export_metric_rows(self.storage)
             else:
                 raise ValueError("Unknown export type")
             stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -320,5 +340,29 @@ class SettingsPage(QWidget):
             _, count = sheets_api.create_export_tab(spreadsheet_id, title, headers, records)
             self.sheet_status.setText(f"Exported {count} rows to new worksheet '{title}'.")
             self.list_google_tabs()
+        except Exception as exc:
+            self._google_error(exc)
+
+    def import_google_pins(self):
+        try:
+            rows = sheets_api.read_rows(self._google_id(), self._selected_title(), limit=10001)
+            records = sheets_exchange.parse_pin_rows(rows, self.storage)
+        except Exception as exc:
+            self._google_error(exc)
+            return
+        answer = QMessageBox.question(
+            self, "Confirm Google Sheets pin import",
+            f"Create {len(records)} NEW local pins? Existing pins are not changed. "
+            "Remote PUBLISHED statuses are unverified; no Pinterest publication occurs.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            count = sheets_exchange.import_pin_rows(self.storage, records)
+            self.sheet_status.setText(f"Imported {count} new local pins; no publishing performed.")
+            window = self.window()
+            if hasattr(window, "refresh") and hasattr(window, "tables"):
+                window.refresh("pins")
         except Exception as exc:
             self._google_error(exc)
