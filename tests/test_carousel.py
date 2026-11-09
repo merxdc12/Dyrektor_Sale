@@ -15,7 +15,7 @@ def make_png(width, height):
         return (struct.pack(">I", len(payload)) + name + payload
                 + struct.pack(">I", zlib.crc32(name + payload) & 0xffffffff))
     header = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
-    raw = b"".join(b"\\x00" + b"\\x00\\x00\\x00\\xff" * width for _ in range(height))
+    raw = b"".join(bytes([0]) + bytes([0, 0, 0, 255]) * width for _ in range(height))
     return (bytes.fromhex("89504e470d0a1a0a")
             + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(raw))
             + chunk(b"IEND", b""))
