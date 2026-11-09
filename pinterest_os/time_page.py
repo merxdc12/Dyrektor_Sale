@@ -74,8 +74,10 @@ class TimePage(QWidget):
         layout.addWidget(self.current)
         layout.addWidget(QLabel("Task attribution for future time:"))
         self.task = QLineEdit("General")
+        self.task.setObjectName("TimeTaskInput")
         layout.addWidget(self.task)
         self.pin = QComboBox()
+        self.pin.setObjectName("TimePinSelection")
         layout.addWidget(self.pin)
         apply_button = QPushButton("Apply task / pin")
         apply_button.clicked.connect(self.apply_attribution)
@@ -83,6 +85,7 @@ class TimePage(QWidget):
         self.active_task = "General"
         self.active_pin_id = None
         self.selection = QLabel("Active: General / Unassigned")
+        self.selection.setObjectName("TimeActiveSelection")
         layout.addWidget(self.selection)
         self.summary = QLabel()
         self.summary.setWordWrap(True)
@@ -93,6 +96,7 @@ class TimePage(QWidget):
         layout.addWidget(self.table)
         layout.addWidget(QLabel("Product time and estimated labor (historical snapshots; legacy unknown):"))
         self.currency = QComboBox()
+        self.currency.setObjectName("TimeCurrencySelection")
         layout.addWidget(self.currency)
         self.products_table = QTableWidget(0, 6)
         self.products_table.setHorizontalHeaderLabels(
