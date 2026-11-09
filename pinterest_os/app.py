@@ -146,8 +146,16 @@ class MainWindow(QMainWindow):
             content.setContentsMargins(18, 6, 12, 12)
             content.setSpacing(16)
             title, subtitle = TITLES[name]
-            content.addWidget(label(title, "Heading"))
-            content.addWidget(label(subtitle, "Muted"))
+            if name == "FILE":
+                heading_row = QHBoxLayout()
+                heading_row.setSpacing(12)
+                heading_row.addWidget(label(title, "Heading"))
+                heading_row.addWidget(label(subtitle, "Muted"))
+                heading_row.addStretch()
+                content.addLayout(heading_row)
+            else:
+                content.addWidget(label(title, "Heading"))
+                content.addWidget(label(subtitle, "Muted"))
             if name in {"FILE", "PIN", "BOARD"}:
                 table = {"FILE": "products", "PIN": "pins", "BOARD": "boards"}[name]
                 if name == "PIN":
