@@ -5,6 +5,7 @@ always yields TEST. SCALE requires positive contribution and sufficient
 observed conversions; STOP is never automatic.
 """
 from .product_profitability import product_profitability
+from .profit_costs import cost_summary, labor_summary
 
 
 def evaluate_product(item, *, min_visits=100, min_conversions=5):
@@ -37,7 +38,15 @@ def decision_report(storage, currency="USD", *, min_visits=100, min_conversions=
     if not isinstance(min_conversions, int) or min_conversions <= 0:
         raise ValueError("min_conversions must be a positive integer")
     result = []
+    costs = cost_summary(storage, currency)
+    labor = labor_summary(storage, currency)
+    unassigned_costs = costs["by_pin"].get(None, {})
+    unresolved = (sum(unassigned_costs.values()) > 0 or
+                  labor["by_pin"].get(None, {}).get("seconds", 0) > 0)
     for item in product_profitability(storage, currency):
         decision = evaluate_product(item, min_visits=min_visits, min_conversions=min_conversions)
+        if unresolved and decision["decision"] == "SCALE":
+            decision = {"decision": "TEST", "evidence": "INCOMPLETE",
+                        "reason": "Unassigned costs or work time exist; allocate or review before scaling."}
         result.append({**item, **decision})
     return result
