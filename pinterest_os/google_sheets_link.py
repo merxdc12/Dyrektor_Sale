@@ -32,18 +32,19 @@ def public_csv_url(value: str) -> str:
     return f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=csv&gid={gid}"
 
 
-class _NoRedirect:
-    def __call__(self, request, fp, code, msg, headers):
-        raise ValueError("Unexpected redirect; public CSV preview unavailable")
-
-
 def preview_public_sheet(value: str, *, max_rows: int = 10) -> list[list[str]]:
     """Read only a small public CSV export. Never send user credentials."""
     from urllib.request import build_opener, HTTPRedirectHandler
 
     class NoRedirect(HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, headers, newurl):
-            raise ValueError("Redirect blocked; public export may require sign-in")
+            parsed = urlsplit(newurl)
+            host = parsed.hostname or ""
+            allowed = (host == "docs.google.com" or host == "googleusercontent.com"
+                       or host.endswith(".googleusercontent.com"))
+            if parsed.scheme != "https" or not allowed or parsed.username or parsed.password:
+                raise ValueError("Redirect to untrusted or sign-in host blocked")
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
 
     request = Request(public_csv_url(value), headers={"User-Agent": "ITHutir-PinterestOS/1.0"})
     opener = build_opener(NoRedirect())
