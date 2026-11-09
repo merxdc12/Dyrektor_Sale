@@ -19,11 +19,12 @@ def publishing_issues(pin: dict, design: dict | None) -> list[str]:
     return issues
 
 
-def pending_queue(storage) -> list[dict]:
+def pending_queue(storage, now: datetime | None = None) -> list[dict]:
     """Return local schedule entries eligible for manual review, oldest first."""
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = (now or datetime.now()).strftime("%Y-%m-%d")
     rows = storage.schedules_between("2000-01-01", today)
-    return [row for row in rows if row["status"] in ("PLANNED", "READY")]
+    return [row for row in rows if row["status"] in ("PLANNED", "READY")
+            and (storage.get("pins", row["pin_id"]) or {}).get("status") != "PUBLISHED"]
 
 
 def mark_published(storage, entry_id: int) -> None:
@@ -34,6 +35,8 @@ def mark_published(storage, entry_id: int) -> None:
     pin = storage.get("pins", entry["pin_id"])
     if not pin:
         raise ValueError("Pin no longer exists")
+    if pin["status"] == "PUBLISHED":
+        raise ValueError("Pin already marked as published")
     if entry["status"] == "CANCELLED":
         raise ValueError("Cancelled calendar entry cannot be published")
     if entry["status"] == "PUBLISHED":
@@ -41,5 +44,4 @@ def mark_published(storage, entry_id: int) -> None:
     issues = publishing_issues(pin, storage.get_pin_design(pin["id"]))
     if issues:
         raise ValueError("Incomplete publishing checklist: " + ", ".join(issues))
-    storage.update_schedule(entry_id, entry["pin_id"], entry["scheduled_at"], "PUBLISHED")
-    storage.update("pins", pin["id"], status="PUBLISHED")
+    storage.confirm_manual_publication(entry_id)
