@@ -148,16 +148,43 @@ def create_project(source: sqlite3.Connection, destination: str | Path) -> Path:
 
 
 def save_project(connection: sqlite3.Connection, folder: str | Path) -> None:
-    """Bundle new assets on every Save and update the project manifest."""
+    """Stage a complete portable snapshot before updating the live project."""
     folder = Path(folder).resolve()
     db_path = Path(connection.execute("PRAGMA database_list").fetchone()[2]).resolve()
     if db_path != folder / DB_NAME:
         raise ValueError("Save requires the currently opened project")
     connection.commit()
-    _copy_assets(connection, folder)
-    ok, reason = verify_database(folder / DB_NAME)
-    if not ok:
-        raise ValueError(f"Database integrity failure: {reason}")
+    with tempfile.TemporaryDirectory(dir=folder.parent) as tmp:
+        stage = Path(tmp)
+        backup_database(connection, stage / DB_NAME)
+        # Keep unreferenced assets; never silently discard user files.
+        shutil.copytree(folder / "assets", stage / "assets")
+        db = sqlite3.connect(stage / DB_NAME)
+        try:
+            _copy_assets(db, stage, folder)
+        finally:
+            db.close()
+        (stage / MANIFEST).write_text(
+            json.dumps(_manifest(stage), indent=2), encoding="utf-8")
+        verify_project(stage)
+        # Source references have all been validated. Copy assets first;
+        # only then change SQLite references in one transaction.
+        for source in (stage / "assets").rglob("*"):
+            if source.is_file():
+                destination = folder / source.relative_to(stage)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                if not destination.exists() or _sha(source) != _sha(destination):
+                    shutil.copy2(source, destination)
+        db = sqlite3.connect(stage / DB_NAME)
+        try:
+            updates = db.execute(
+                "SELECT project_json,png_path,pin_id FROM pin_designs").fetchall()
+        finally:
+            db.close()
+        with connection:
+            connection.executemany(
+                "UPDATE pin_designs SET project_json=?,png_path=? WHERE pin_id=?",
+                updates)
     (folder / MANIFEST).write_text(
         json.dumps(_manifest(folder), indent=2), encoding="utf-8")
     verify_project(folder)
