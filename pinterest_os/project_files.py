@@ -138,18 +138,17 @@ def _rebase_assets(folder: Path) -> None:
 
 
 def save_project(connection: sqlite3.Connection, folder: str | Path) -> None:
-    """Refresh an existing project with an atomic database replacement.
-
-    Existing assets are retained. Newly referenced external assets are NOT
-    collected by this operation; use Save As for a complete portable snapshot.
-    """
+    """Commit active SQLite and refresh manifest; Save As bundles new assets."""
     folder = Path(folder).resolve()
-    verify_project(folder)
-    with tempfile.TemporaryDirectory(dir=folder) as tmp:
-        snapshot = Path(tmp) / DB_NAME
-        backup_database(connection, snapshot)
-        os.replace(snapshot, folder / DB_NAME)
-    (folder / MANIFEST).write_text(json.dumps(_manifest(folder), indent=2), encoding="utf-8")
+    db_path = Path(connection.execute("PRAGMA database_list").fetchone()[2]).resolve()
+    if db_path != folder / DB_NAME:
+        raise ValueError("Save requires the currently opened project")
+    connection.commit()
+    ok, reason = verify_database(folder / DB_NAME)
+    if not ok:
+        raise ValueError(f"Database integrity failure: {reason}")
+    (folder / MANIFEST).write_text(
+        json.dumps(_manifest(folder), indent=2), encoding="utf-8")
     verify_project(folder)
 
 
