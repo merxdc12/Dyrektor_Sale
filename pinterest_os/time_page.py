@@ -99,6 +99,20 @@ class TimePage(QWidget):
             ["Product", "Worked pins", "Time", "Labor estimate", "Time / pin", "Labor / pin"])
         self.products_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         layout.addWidget(self.products_table)
+        layout.addWidget(QLabel("TIME 5 — weekly workload (ISO weeks):"))
+        self.week_table = QTableWidget(0, 3)
+        self.week_table.setHorizontalHeaderLabels(["Week", "Logged time", "Entries"])
+        self.week_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        layout.addWidget(self.week_table)
+        layout.addWidget(QLabel("Largest time-consuming tasks (bottleneck candidates):"))
+        self.bottleneck_table = QTableWidget(0, 4)
+        self.bottleneck_table.setHorizontalHeaderLabels(
+            ["Task", "Logged time", "Share %", "Entries"])
+        self.bottleneck_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        layout.addWidget(self.bottleneck_table)
+        self.trend_note = QLabel()
+        self.trend_note.setWordWrap(True)
+        layout.addWidget(self.trend_note)
         button = QPushButton("Refresh time accounting")
         button.clicked.connect(self.refresh)
         layout.addWidget(button)
@@ -158,6 +172,7 @@ class TimePage(QWidget):
         self.currency.setCurrentIndex(max(0, self.currency.findData(previous_currency)))
         self.currency.blockSignals(False)
         self.refresh_products()
+        self.refresh_trends()
 
     def refresh_products(self):
         currency = self.currency.currentData()
@@ -179,3 +194,23 @@ class TimePage(QWidget):
             for j, value in enumerate(values):
                 self.products_table.setItem(i, j, QTableWidgetItem(str(value)))
         self.products_table.resizeColumnsToContents()
+
+    def refresh_trends(self):
+        from .time_trends import workload_trends
+        result = workload_trends(self.storage)
+        self.week_table.setRowCount(len(result["weeks"]))
+        for i, item in enumerate(result["weeks"]):
+            for j, value in enumerate((item["week"], duration(item["seconds"]),
+                                       item["entries"])):
+                self.week_table.setItem(i, j, QTableWidgetItem(str(value)))
+        self.week_table.resizeColumnsToContents()
+        self.bottleneck_table.setRowCount(len(result["tasks"]))
+        for i, item in enumerate(result["tasks"]):
+            for j, value in enumerate((item["task"], duration(item["seconds"]),
+                                       item["share_percent"], item["entries"])):
+                self.bottleneck_table.setItem(i, j, QTableWidgetItem(str(value)))
+        self.bottleneck_table.resizeColumnsToContents()
+        self.trend_note.setText(
+            f"Invalid timestamps excluded: {result['invalid_timestamps']}. "
+            "High time share identifies candidates for investigation, not proof "
+            "of inefficiency. Entry counts do not equal completed tasks.")
