@@ -18,6 +18,7 @@ from .calendar import CalendarPage
 from .analytics import AnalyticsPage
 from .reports_page import ReportsPage
 from .time_page import TimePage
+from .settings_page import SettingsPage
 from .publishing import PublishingPage
 from .editor import RecordEditor
 from .designer import PinDesigner
@@ -155,19 +156,8 @@ class MainWindow(QMainWindow):
                 self.calendar_page = CalendarPage(self.storage)
                 content.addWidget(self.calendar_page, 1)
             elif name == "SETTINGS":
-                panel, body = card()
-                body.addWidget(label("Appearance", "Heading"))
-                body.addWidget(label("Theme follows the operating system when System is selected.", "Muted"))
-                selector = QComboBox()
-                selector.setAccessibleName("Application color theme")
-                for title, value in (("System", "system"), ("Dark", "dark"), ("Light", "light")):
-                    selector.addItem(title, value)
-                selector.setCurrentIndex(selector.findData(self.theme.preference))
-                selector.currentIndexChanged.connect(
-                    lambda idx: self.theme.set_theme(selector.itemData(idx))
-                )
-                body.addWidget(selector)
-                content.addWidget(panel)
+                self.settings_page = SettingsPage(self.storage, self.theme)
+                content.addWidget(self.settings_page, 1)
             elif name == "TIME":
                 self.time_page = TimePage(self.storage, on_change=self.record_elapsed)
                 content.addWidget(self.time_page, 1)
