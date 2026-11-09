@@ -538,6 +538,10 @@ class MainWindow(QMainWindow):
             export_button = QPushButton("Export CSV")
             export_button.clicked.connect(self.export_csv)
             actions.addWidget(export_button)
+        if table == "boards":
+            remove = QPushButton("Delete board")
+            remove.clicked.connect(self.delete_selected_board)
+            actions.addWidget(remove)
         if table == "products":
             remove = QPushButton("Delete selected")
             remove.clicked.connect(self.delete_selected_product)
@@ -561,6 +565,13 @@ class MainWindow(QMainWindow):
             self.pin_status.currentIndexChanged.connect(lambda _: self.refresh("pins"))
             filters.addWidget(self.pin_status)
             body.addLayout(filters)
+        if table == "boards":
+            self.board_search = QLineEdit()
+            self.board_search.setPlaceholderText("Search board name, SEO description or URL")
+            self.board_search.textChanged.connect(lambda _: self.refresh("boards"))
+            body.addWidget(self.board_search)
+            self.board_summary = label("Board statistics")
+            body.addWidget(self.board_summary)
         if table == "products":
             filters = QHBoxLayout()
             search = QLineEdit()
@@ -587,6 +598,38 @@ class MainWindow(QMainWindow):
         body.addWidget(grid)
         content.addWidget(panel, 1)
         self.tables[table] = grid
+
+    def selected_board_id(self) -> int | None:
+        grid = self.tables["boards"]
+        row = grid.currentRow()
+        item = grid.item(row, 0) if row >= 0 else None
+        return int(item.text()) if item else None
+
+    def delete_selected_board(self) -> None:
+        board_id = self.selected_board_id()
+        if board_id is None:
+            QMessageBox.information(self, "Select board", "Select a board first.")
+            return
+        board = self.storage.get("boards", board_id)
+        if not board:
+            return
+        count = self.storage.board_pin_count(board_id)
+        message = (f"Delete board '{board['name']}'?\\n"
+                   f"{count} linked pin(s) will remain, but their board link will be cleared.\\n"
+                   "This action cannot be undone.")
+        if QMessageBox.question(
+            self, "Confirm board deletion", message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self.storage.delete_board(board_id)
+            self.refresh("boards")
+            self.refresh("pins")
+            self.pin_designer.reload_pins()
+        except Exception as exc:
+            QMessageBox.warning(self, "Delete board failed", str(exc))
 
     def selected_pin_id(self) -> int | None:
         grid = self.tables["pins"]
@@ -710,10 +753,18 @@ class MainWindow(QMainWindow):
         rows = (self.storage.search_products(self.product_search.text(), self.product_category.currentData())
                 if table == "products" else
                 self.storage.search_pins(self.pin_search.text(), self.pin_status.currentData())
-                if table == "pins" else self.storage.all(table))
+                if table == "pins" else
+                self.storage.search_boards(self.board_search.text())
+                if table == "boards" else self.storage.all(table))
+        if table == "boards":
+            counts = self.storage.board_pin_counts()
+            self.board_summary.setText(
+                f"Boards: {len(rows)} shown  |  "
+                f"Linked pins: {sum(counts.values())}  |  "
+                f"Unassigned pins: {sum(1 for p in self.storage.all('pins') if p['board_id'] is None)}")
         fields = {
             "products": ("id", "name", "category", "target_url"),
-            "boards": ("id", "name", "url", "description"),
+            "boards": ("id", "name", "url", "description", "linked_pins"),
             "pins": ("id", "title", "status", "board_id", "product_id", "destination_url"),
         }[table]
         grid.setColumnCount(len(fields))
@@ -721,7 +772,9 @@ class MainWindow(QMainWindow):
         grid.setRowCount(len(rows))
         for i, row in enumerate(rows):
             for j, field in enumerate(fields):
-                grid.setItem(i, j, QTableWidgetItem(str(row.get(field) if row.get(field) is not None else "")))
+                value = (counts.get(row["id"], 0) if table == "boards" and field == "linked_pins"
+                         else row.get(field))
+                grid.setItem(i, j, QTableWidgetItem(str(value if value is not None else "")))
         grid.resizeColumnsToContents()
 
     def edit_record(self, table: str, record: dict | None = None) -> None:
