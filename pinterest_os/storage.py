@@ -57,6 +57,21 @@ CREATE TABLE IF NOT EXISTS business_metrics (
  reported_cost_cents INTEGER NOT NULL CHECK(reported_cost_cents>=0),
  PRIMARY KEY(date,pin_id,currency)
 );
+CREATE TABLE IF NOT EXISTS cost_entries (
+ id INTEGER PRIMARY KEY,
+ date TEXT NOT NULL,
+ pin_id INTEGER REFERENCES pins(id) ON DELETE SET NULL,
+ currency TEXT NOT NULL CHECK(length(currency)=3),
+ category TEXT NOT NULL CHECK(category IN ('DIRECT','ALLOCATED')),
+ description TEXT NOT NULL,
+ amount_cents INTEGER NOT NULL CHECK(amount_cents>=0),
+ created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS labor_rates (
+ currency TEXT PRIMARY KEY CHECK(length(currency)=3),
+ hourly_cents INTEGER NOT NULL CHECK(hourly_cents>=0),
+ updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS work_sessions (
  id INTEGER PRIMARY KEY, started_at TEXT NOT NULL,
  ended_at TEXT, active_seconds INTEGER NOT NULL DEFAULT 0
