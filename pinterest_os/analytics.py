@@ -181,7 +181,8 @@ class AnalyticsPage(QWidget):
         self.refresh_groups()
         selected_currency = self.business_currency.currentData()
         currencies = [row[0] for row in self.storage.conn.execute(
-            "SELECT DISTINCT currency FROM business_metrics ORDER BY currency")]
+            """SELECT currency FROM business_metrics UNION SELECT currency FROM cost_entries
+               UNION SELECT currency FROM labor_rates ORDER BY currency""")]
         self.business_currency.blockSignals(True)
         self.business_currency.clear()
         for currency in currencies:
