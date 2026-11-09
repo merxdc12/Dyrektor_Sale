@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS products (
 );
 CREATE TABLE IF NOT EXISTS boards (
  id INTEGER PRIMARY KEY, name TEXT NOT NULL, url TEXT NOT NULL DEFAULT '',
- description TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
+ description TEXT NOT NULL DEFAULT '', category TEXT NOT NULL DEFAULT 'Other', created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS pins (
  id INTEGER PRIMARY KEY, title TEXT NOT NULL,
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS time_entries (
 """
 FIELDS = {
  "products": ("name", "target_url", "category"),
- "boards": ("name", "url", "description"),
+ "boards": ("name", "url", "description", "category"),
  "pins": ("title", "description", "destination_url", "product_id", "board_id", "status"),
 }
 REQUIRED = {"products": "name", "boards": "name", "pins": "title"}
@@ -74,7 +74,8 @@ class Storage:
         # Non-destructive upgrades of Phase 1 databases.
         for table, additions in {
             "products": {"category": "TEXT NOT NULL DEFAULT 'POD'"},
-            "boards": {"description": "TEXT NOT NULL DEFAULT ''"},
+            "boards": {"description": "TEXT NOT NULL DEFAULT ''",
+                       "category": "TEXT NOT NULL DEFAULT 'Other'"},
             "pins": {"destination_url": "TEXT NOT NULL DEFAULT ''"},
         }.items():
             present = {row[1] for row in self.conn.execute(f"PRAGMA table_info({table})")}
@@ -112,6 +113,10 @@ class Storage:
         field = REQUIRED[table]
         if field in cleaned and not cleaned[field]:
             raise ValueError(f"{field} is required")
+        if table == "boards":
+            from .board_logic import CATEGORIES
+            if "category" in cleaned and cleaned["category"] not in CATEGORIES:
+                raise ValueError("Invalid board category")
         if table == "pins" and "status" in cleaned and cleaned["status"] not in STATUSES:
             raise ValueError("Invalid pin status")
         return cleaned
