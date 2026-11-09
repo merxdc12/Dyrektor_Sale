@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS pin_designs (
  pin_id INTEGER PRIMARY KEY REFERENCES pins(id) ON DELETE CASCADE,
  project_json TEXT NOT NULL,
  png_path TEXT NOT NULL DEFAULT '',
+ canva_design_id TEXT NOT NULL DEFAULT '',
  updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS products (
@@ -80,7 +81,25 @@ class Storage:
             for field, sql_type in additions.items():
                 if field not in present:
                     self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {field} {sql_type}")
+        present = {row[1] for row in self.conn.execute("PRAGMA table_info(pin_designs)")}
+        if "canva_design_id" not in present:
+            self.conn.execute("ALTER TABLE pin_designs ADD COLUMN canva_design_id TEXT NOT NULL DEFAULT ''")
         self.conn.commit()
+
+    def set_canva_design_id(self, pin_id: int, design_id: str) -> None:
+        from .canva_bridge import validate_canva_design_id
+        validate_canva_design_id(design_id)
+        if not self.get("pins", pin_id):
+            raise ValueError("Pin does not exist")
+        with self.conn:
+            self.conn.execute(
+                """INSERT INTO pin_designs(pin_id,project_json,canva_design_id,updated_at)
+                   VALUES(?,?,?,?)
+                   ON CONFLICT(pin_id) DO UPDATE SET
+                   canva_design_id=excluded.canva_design_id,
+                   updated_at=excluded.updated_at""",
+                (pin_id, '{"version":1}', design_id, utc_now()),
+            )
 
     def _validate(self, table: str, values: dict) -> dict:
         if table not in FIELDS:
