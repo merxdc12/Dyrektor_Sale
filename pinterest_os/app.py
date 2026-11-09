@@ -132,7 +132,7 @@ class MainWindow(QMainWindow):
             button = QPushButton(name)
             button.setObjectName("NavButton")
             # Keep every label readable; scroll horizontally instead of squeezing tabs.
-            button_width = max(92, button.fontMetrics().horizontalAdvance(name) + 52)
+            button_width = max(130, button.fontMetrics().horizontalAdvance(name) + 90)
             button.setFixedWidth(button_width)
             navigation_width += button_width + 8
             button.setCheckable(True)
