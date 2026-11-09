@@ -22,4 +22,4 @@ jobs:
       - name: Board and calendar regression tests
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest -q tests/test_board_logic.py tests/test_calendar_scheduling.py tests/test_calendar_logic.py tests/test_publishing_logic.py tests/test_carousel.py tests/test_analytics.py tests/test_analytics_import.py tests/test_analytics_metrics.py
+        run: python -m pytest -q tests/test_board_logic.py tests/test_calendar_scheduling.py tests/test_calendar_logic.py tests/test_publishing_logic.py tests/test_carousel.py tests/test_analytics.py tests/test_analytics_import.py tests/test_analytics_metrics.py tests/test_analytics_groups.py
