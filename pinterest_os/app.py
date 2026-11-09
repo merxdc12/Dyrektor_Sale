@@ -394,6 +394,8 @@ class MainWindow(QMainWindow):
         self.stop_button.setEnabled(True)
         self.pin_designer.storage = target
         self.pin_designer.reload_pins()
+        self.pin_designer.apply_template()
+        self.pin_designer.canva_id.clear()
         self.calendar_page.storage = target
         self.calendar_page.refresh()
         for table in self.tables:
