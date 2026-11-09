@@ -282,7 +282,10 @@ class PinDesigner(QWidget):
                                  layer["size"], layer["color"], layer.get("width", 820),
                                  layer.get("font", "DejaVu Sans"), layer.get("align", "center"))
             elif layer["kind"] == "image":
-                item = LayerImage(layer["path"], layer["x"], layer["y"],
+                asset_path = Path(layer["path"])
+                if not asset_path.is_absolute() and self.storage is not None:
+                    asset_path = self.storage.path.parent / asset_path
+                item = LayerImage(str(asset_path), layer["x"], layer["y"],
                                   layer["width"], layer["height"])
             else:
                 raise ValueError("Unknown layer type")
