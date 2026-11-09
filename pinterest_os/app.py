@@ -11,7 +11,7 @@ from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFrame, QHBoxLayout, QHeaderView, QLabel,
     QMainWindow, QMessageBox, QPushButton, QScrollArea, QFileDialog, QTabWidget, QLineEdit,
-    QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QInputDialog,
+    QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QInputDialog, QLayout,
 )
 
 from .board_logic import CATEGORIES, board_plan, board_seo_issues
@@ -199,6 +199,8 @@ class MainWindow(QMainWindow):
             content.addStretch()
             self.pages.addWidget(page)
 
+        self.apply_ui_standards()
+
         footer, foot = card()
         footer_row = QHBoxLayout()
         footer_row.addWidget(label("SESSION", "Muted"))
@@ -221,6 +223,16 @@ class MainWindow(QMainWindow):
         self.tick_timer.timeout.connect(self.tick)
         self.tick_timer.start(1000)
         self.render_timer()
+
+    def apply_ui_standards(self) -> None:
+        """Apply shared spacing and table geometry to every existing tab."""
+        for widget in self.pages.findChildren(QTableWidget):
+            widget.verticalHeader().setDefaultSectionSize(36)
+            widget.horizontalHeader().setMinimumHeight(36)
+            widget.setAlternatingRowColors(True)
+        for layout in self.pages.findChildren(QHBoxLayout):
+            if layout.spacing() < 8:
+                layout.setSpacing(10)
 
     def build_file_tools(self, content: QVBoxLayout) -> None:
         projects, project_body = card()
