@@ -210,7 +210,7 @@ class PinDesigner(QWidget):
             name = item.toPlainText()[:35] if isinstance(item, LayerText) else Path(item.source_path).name
             self.layers_list.addItem(("Text: " if isinstance(item, LayerText) else "Image: ") + name)
             if item.isSelected():
-                self.layers_list.setCurrentRow(len(items) - 1 if False else items.index(item))
+                self.layers_list.setCurrentRow(items.index(item))
         self.layers_list.blockSignals(False)
 
     def select_layer_row(self, row):
