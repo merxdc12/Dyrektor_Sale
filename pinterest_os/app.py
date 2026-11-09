@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
 
 from .board_logic import CATEGORIES, board_plan, board_seo_issues
 from .calendar import CalendarPage
+from .analytics import AnalyticsPage
 from .publishing import PublishingPage
 from .editor import RecordEditor
 from .designer import PinDesigner
@@ -36,7 +37,7 @@ TITLES = {
     "BOARD": ("Boards", "Manage board names, links and descriptions"),
     "CALENDAR": ("Publishing calendar", "Plan organic pin publishing dates and times"),
     "PUBLISHING": ("Publishing", "Manual browser-based workflow"),
-    "ANALYTICS": ("Analytics", "Performance tracking — coming next"),
+    "ANALYTICS": ("Analytics", "Local operations dashboard — no Pinterest API"),
     "REPORTS": ("Reports", "Costs and export — coming next"),
     "TIME": ("Time tracking", "Track work sessions and production effort"),
     "SETTINGS": ("Settings", "Appearance and local preferences"),
@@ -171,6 +172,9 @@ class MainWindow(QMainWindow):
                 self.time_metric = label("00:00:00", "Metric")
                 body.addWidget(self.time_metric)
                 content.addWidget(panel)
+            elif name == "ANALYTICS":
+                self.analytics_page = AnalyticsPage(self.storage)
+                content.addWidget(self.analytics_page, 1)
             elif name == "PUBLISHING":
                 self.publishing_page = PublishingPage(self.storage)
                 content.addWidget(self.publishing_page, 1)
