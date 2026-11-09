@@ -5,7 +5,7 @@ import webbrowser
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QHBoxLayout, QLabel, QMessageBox, QPushButton, QTableWidget,
+    QApplication, QHBoxLayout, QLabel, QMessageBox, QPushButton, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -29,6 +29,7 @@ class PublishingPage(QWidget):
         for title, handler in (
             ("Refresh", self.refresh),
             ("Review selected", self.review_selected),
+            ("Copy pin details", self.copy_selected_details),
             ("Open Pinterest", lambda: webbrowser.open("https://www.pinterest.com/")),
             ("Confirm manually published", self.confirm_published),
         ):
@@ -66,11 +67,38 @@ class PublishingPage(QWidget):
             return
         entry = self.storage.get_schedule(entry_id)
         pin = self.storage.get("pins", entry["pin_id"])
+        if not pin:
+            QMessageBox.warning(self, "Missing pin", "Pin no longer exists.")
+            self.refresh()
+            return
         issues = publishing_issues(pin, self.storage.get_pin_design(pin["id"]))
         text = ("Missing:\n• " + "\n• ".join(issues)) if issues else (
             "Local metadata and image file checks passed.\n"
             "Review the image, destination and board in Pinterest before publishing.")
         QMessageBox.information(self, "Publishing review", text)
+
+    def copy_selected_details(self):
+        """Copy local pin metadata for manual pasting; never sends it to Pinterest."""
+        entry_id = self.selected_id()
+        if entry_id is None:
+            return
+        entry = self.storage.get_schedule(entry_id)
+        if not entry:
+            QMessageBox.warning(self, "Missing entry", "Calendar entry no longer exists.")
+            self.refresh()
+            return
+        pin = self.storage.get("pins", entry["pin_id"])
+        if not pin:
+            QMessageBox.warning(self, "Missing pin", "Pin no longer exists.")
+            self.refresh()
+            return
+        board = self.storage.get("boards", pin["board_id"]) if pin["board_id"] else None
+        details = ("Title: " + pin["title"] + "\\n"
+                   + "Description: " + pin["description"] + "\\n"
+                   + "Destination: " + pin["destination_url"] + "\\n"
+                   + "Board: " + (board["name"] if board else "Unassigned"))
+        QApplication.clipboard().setText(details)
+        QMessageBox.information(self, "Copied", "Pin details copied for manual pasting.")
 
     def confirm_published(self):
         entry_id = self.selected_id()
@@ -96,5 +124,8 @@ class PublishingPage(QWidget):
             QMessageBox.warning(self, "Cannot update status", str(exc))
             return
         self.refresh()
-        if self.parent() is not None and hasattr(self.parent(), "calendar_page"):
-            self.parent().calendar_page.refresh()
+        window = self.window()
+        if hasattr(window, "calendar_page"):
+            window.calendar_page.refresh()
+        if hasattr(window, "refresh") and hasattr(window, "tables"):
+            window.refresh("pins")
