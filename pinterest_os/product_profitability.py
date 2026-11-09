@@ -5,7 +5,7 @@ not silently allocated. Business CSV reported costs and ledger costs are
 assumed distinct; operators must avoid entering the same expense twice.
 """
 from .profit_costs import cost_summary, labor_summary, valid_currency
-from .financial_integrity import unresolved_product_ids
+from .financial_integrity import unresolved_product_ids, duplicate_ledger_adjustments
 
 
 def product_profitability(storage, currency):
@@ -43,6 +43,11 @@ def product_profitability(storage, currency):
     names = {row[0]: row[1] for row in storage.conn.execute(
         "SELECT id,name FROM products")}
     flagged_products = unresolved_product_ids(storage, currency)
+    duplicate_adjustments = duplicate_ledger_adjustments(storage, currency)
+    adjustment_by_product = {}
+    for pin_id, cents in duplicate_adjustments.items():
+        product_id = mapping.get(pin_id)
+        adjustment_by_product[product_id] = adjustment_by_product.get(product_id, 0) + cents
     output = []
     for product_id, item in results.items():
         item["product_name"] = names.get(product_id, "Unassigned")
@@ -51,6 +56,8 @@ def product_profitability(storage, currency):
             item["labor_cents"] = item["labor_cents"] or 0
         known_cost = (item["reported_cost_cents"] + item["direct_cents"]
                       + item["allocated_cents"])
+        item["reconciled_duplicate_cents"] = adjustment_by_product.get(product_id, 0)
+        known_cost -= item["reconciled_duplicate_cents"]
         item["known_cost_cents"] = known_cost
         item["nonlabor_contribution_cents"] = item["revenue_cents"] - known_cost
         if item["labor_cents"] is None or item["reconciliation_required"]:
