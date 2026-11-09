@@ -156,6 +156,10 @@ class MainWindow(QMainWindow):
                 workspace_heading = label("Workspace — Products and content destinations", "WorkspaceHeading")
                 workspace_heading.setWordWrap(False)
                 content.addWidget(workspace_heading)
+            elif name == "ANALYTICS":
+                analytics_heading = label(f"{title} — {subtitle}", "WorkspaceHeading")
+                analytics_heading.setWordWrap(False)
+                content.addWidget(analytics_heading)
             else:
                 content.addWidget(label(title, "Heading"))
                 content.addWidget(label(subtitle, "Muted"))
