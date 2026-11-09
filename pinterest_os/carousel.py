@@ -4,10 +4,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtGui import QPixmap, QIcon
 from PyQt6.QtWidgets import (
     QComboBox, QFileDialog, QHBoxLayout, QInputDialog, QLabel, QListWidget,
-    QMessageBox, QPushButton, QVBoxLayout, QWidget,
+    QMessageBox, QPushButton, QVBoxLayout, QWidget, QListView, QListWidgetItem,
 )
 
 from .carousel_logic import export_carousel, validate_slides
@@ -30,6 +30,17 @@ class CarouselPage(QWidget):
         self.slides = QListWidget()
         self.slides.currentRowChanged.connect(self.update_preview)
         layout.addWidget(self.slides)
+        layout.addWidget(QLabel("Carousel storyboard — select a thumbnail to preview"))
+        self.storyboard = QListWidget()
+        self.storyboard.setViewMode(QListView.ViewMode.IconMode)
+        self.storyboard.setFlow(QListView.Flow.LeftToRight)
+        self.storyboard.setWrapping(False)
+        self.storyboard.setIconSize(QSize(92, 116))
+        self.storyboard.setGridSize(QSize(120, 150))
+        self.storyboard.setFixedHeight(165)
+        self.storyboard.currentRowChanged.connect(self.slides.setCurrentRow)
+        self.slides.currentRowChanged.connect(self.storyboard.setCurrentRow)
+        layout.addWidget(self.storyboard)
         self.preview_label = QLabel("Select a slide to preview")
         self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview_label.setMinimumHeight(300)
@@ -70,6 +81,7 @@ class CarouselPage(QWidget):
 
     def reload_slides(self):
         self.slides.clear()
+        self.storyboard.clear()
         carousel_id = self.carousel.currentData()
         if carousel_id is None:
             return
@@ -78,6 +90,15 @@ class CarouselPage(QWidget):
             if not row.get("png_path") or not Path(row["png_path"]).is_file():
                 label += "  [PNG missing]"
             self.slides.addItem(label)
+            thumbnail = QListWidgetItem(label)
+            path = row.get("png_path") or ""
+            if path and Path(path).is_file():
+                pixmap = QPixmap(path)
+                if not pixmap.isNull():
+                    thumbnail.setIcon(QIcon(pixmap.scaled(
+                        QSize(92, 116), Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation)))
+            self.storyboard.addItem(thumbnail)
         if self.slides.count():
             self.slides.setCurrentRow(0)
         else:
