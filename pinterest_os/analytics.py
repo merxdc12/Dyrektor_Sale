@@ -150,6 +150,9 @@ class AnalyticsPage(QWidget):
         layout.addWidget(review_button)
         self.integrity_label = QLabel("Financial reconciliation status: not checked")
         layout.addWidget(self.integrity_label)
+        for table in self.findChildren(QTableWidget):
+            table.setMinimumHeight(240)
+            table.verticalHeader().setDefaultSectionSize(36)
         for column in (overview, metrics, boards, business, profitability, decisions):
             column.addStretch(1)
         self.refresh()
