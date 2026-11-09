@@ -166,6 +166,35 @@ class Storage:
                                   for key in ("name", "category", "target_url")))
         ]
 
+    def search_pins(self, query: str = "", status: str = "ALL") -> list[dict]:
+        if status not in {"ALL", *STATUSES}:
+            raise ValueError("Invalid pin status filter")
+        needle = query.strip().casefold()
+        return [
+            row for row in self.all("pins")
+            if (status == "ALL" or row["status"] == status)
+            and (not needle or any(needle in str(row.get(key) or "").casefold()
+                                   for key in ("title", "description", "destination_url")))
+        ]
+
+    def duplicate_pin(self, pin_id: int) -> int:
+        """Copy metadata into a DRAFT; never copy published status or schedule."""
+        original = self.get("pins", pin_id)
+        if original is None:
+            raise ValueError("Pin not found")
+        return self.create(
+            "pins", title=original["title"] + " (copy)",
+            description=original["description"],
+            destination_url=original["destination_url"],
+            product_id=original["product_id"], board_id=original["board_id"],
+            status="DRAFT")
+
+    def delete_pin(self, pin_id: int) -> bool:
+        """Delete one pin and its linked design/calendar rows via foreign keys."""
+        with self.conn:
+            result = self.conn.execute("DELETE FROM pins WHERE id=?", (pin_id,))
+        return result.rowcount > 0
+
     def product_pin_count(self, product_id: int) -> int:
         return int(self.conn.execute(
             "SELECT COUNT(*) FROM pins WHERE product_id=?", (product_id,)
