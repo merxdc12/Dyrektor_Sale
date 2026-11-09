@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 
 STATUSES = ("PLANNED", "READY", "PUBLISHED", "CANCELLED")
 
@@ -34,6 +35,9 @@ def publication_checklist(pin: dict, design: dict | None) -> list[str]:
         missing.append("Destination URL")
     if pin.get("board_id") is None:
         missing.append("Assigned board")
-    if not design or not (design.get("png_path") or "").strip():
+    png = (design or {}).get("png_path") or ""
+    if not png.strip():
         missing.append("Exported PNG asset")
+    elif not Path(png).is_file():
+        missing.append("PNG file does not exist at saved path")
     return missing
