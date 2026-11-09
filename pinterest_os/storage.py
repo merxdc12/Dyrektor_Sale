@@ -68,6 +68,16 @@ CREATE TABLE IF NOT EXISTS cost_entries (
  amount_cents INTEGER NOT NULL CHECK(amount_cents>=0),
  created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS reconciliation_reviews (
+ date TEXT NOT NULL,
+ pin_id INTEGER NOT NULL REFERENCES pins(id) ON DELETE CASCADE,
+ currency TEXT NOT NULL,
+ fingerprint TEXT NOT NULL,
+ decision TEXT NOT NULL CHECK(decision IN ('DISTINCT','DUPLICATE')),
+ note TEXT NOT NULL,
+ reviewed_at TEXT NOT NULL,
+ PRIMARY KEY(date,pin_id,currency)
+);
 CREATE TABLE IF NOT EXISTS labor_rates (
  currency TEXT PRIMARY KEY CHECK(length(currency)=3),
  hourly_cents INTEGER NOT NULL CHECK(hourly_cents>=0),
