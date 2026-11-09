@@ -1,5 +1,6 @@
 """Manual cost entry and transparent labor valuation UI."""
 from datetime import date
+import sqlite3
 from PyQt6.QtWidgets import (QComboBox, QFormLayout, QHBoxLayout, QLabel,
                              QLineEdit, QMessageBox, QPushButton, QTableWidget,
                              QTableWidgetItem, QVBoxLayout, QWidget)
@@ -22,10 +23,13 @@ class ProfitCostsPanel(QWidget):
         self.category.addItems(["DIRECT", "ALLOCATED"])
         self.description = QLineEdit()
         self.amount = QLineEdit()
+        self.source_ref = QLineEdit()
+        self.source_ref.setPlaceholderText("Optional unique invoice / transaction reference")
         for label, widget in (
             ("Date YYYY-MM-DD", self.day), ("Currency", self.currency),
             ("Local pin ID (optional)", self.pin_id), ("Cost category", self.category),
-            ("Description", self.description), ("Amount", self.amount)):
+            ("Description", self.description), ("Amount", self.amount),
+            ("Source reference", self.source_ref)):
             form.addRow(label, widget)
         layout.addLayout(form)
         controls = QHBoxLayout()
@@ -54,8 +58,8 @@ class ProfitCostsPanel(QWidget):
             pin_id = int(self.pin_id.text()) if self.pin_id.text().strip() else None
             add_cost(self.storage, self.day.text().strip(), self.currency.text(),
                      self.category.currentText(), self.description.text(),
-                     self.amount.text(), pin_id)
-        except (ValueError, OverflowError) as exc:
+                     self.amount.text(), pin_id, self.source_ref.text().strip() or None)
+        except (ValueError, OverflowError, sqlite3.IntegrityError) as exc:
             QMessageBox.warning(self, "Invalid cost", str(exc))
             return
         self.refresh()
