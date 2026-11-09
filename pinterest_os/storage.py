@@ -27,6 +27,15 @@ CREATE TABLE IF NOT EXISTS work_sessions (
  id INTEGER PRIMARY KEY, started_at TEXT NOT NULL,
  ended_at TEXT, active_seconds INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS pin_schedule (
+ id INTEGER PRIMARY KEY,
+ pin_id INTEGER NOT NULL REFERENCES pins(id) ON DELETE CASCADE,
+ scheduled_at TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'PLANNED'
+ CHECK(status IN ('PLANNED','READY','PUBLISHED','CANCELLED')),
+ created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pin_schedule_date ON pin_schedule(scheduled_at);
 CREATE TABLE IF NOT EXISTS time_entries (
  id INTEGER PRIMARY KEY,
  session_id INTEGER NOT NULL REFERENCES work_sessions(id),
@@ -158,6 +167,63 @@ class Storage:
                 "UPDATE work_sessions SET ended_at=? WHERE id=? AND ended_at IS NULL",
                 (utc_now(), session_id),
             )
+
+
+    def _validate_schedule(self, pin_id: int, scheduled_at: str, status: str) -> None:
+        from datetime import datetime
+        if status not in {"PLANNED", "READY", "PUBLISHED", "CANCELLED"}:
+            raise ValueError("Invalid schedule status")
+        try:
+            datetime.strptime(scheduled_at, "%Y-%m-%dT%H:%M")
+        except ValueError as exc:
+            raise ValueError("Date/time must use YYYY-MM-DDTHH:MM") from exc
+        if not self.get("pins", pin_id):
+            raise ValueError("Pin does not exist")
+
+    def create_schedule(self, pin_id: int, scheduled_at: str, status: str = "PLANNED") -> int:
+        self._validate_schedule(pin_id, scheduled_at, status)
+        with self.conn:
+            cursor = self.conn.execute(
+                "INSERT INTO pin_schedule(pin_id,scheduled_at,status,created_at) VALUES(?,?,?,?)",
+                (pin_id, scheduled_at, status, utc_now()),
+            )
+        return int(cursor.lastrowid)
+
+    def update_schedule(self, entry_id: int, pin_id: int, scheduled_at: str, status: str) -> bool:
+        self._validate_schedule(pin_id, scheduled_at, status)
+        with self.conn:
+            cursor = self.conn.execute(
+                "UPDATE pin_schedule SET pin_id=?,scheduled_at=?,status=? WHERE id=?",
+                (pin_id, scheduled_at, status, entry_id),
+            )
+        return cursor.rowcount > 0
+
+    def get_schedule(self, entry_id: int) -> dict | None:
+        self.conn.row_factory = sqlite3.Row
+        try:
+            row = self.conn.execute("SELECT * FROM pin_schedule WHERE id=?", (entry_id,)).fetchone()
+            return dict(row) if row else None
+        finally:
+            self.conn.row_factory = None
+
+    def schedules_for_day(self, day: str) -> list[dict]:
+        from datetime import date
+        date.fromisoformat(day)
+        self.conn.row_factory = sqlite3.Row
+        try:
+            return [dict(row) for row in self.conn.execute(
+                """SELECT s.*,p.title FROM pin_schedule s JOIN pins p ON p.id=s.pin_id
+                   WHERE s.scheduled_at >= ? AND s.scheduled_at < ?
+                   ORDER BY s.scheduled_at,s.id""",
+                (day, day + "T99:99"),
+            )]
+        finally:
+            self.conn.row_factory = None
+
+    def delete_schedule(self, entry_id: int) -> bool:
+        with self.conn:
+            cursor = self.conn.execute("DELETE FROM pin_schedule WHERE id=?", (entry_id,))
+        return cursor.rowcount > 0
 
     def close(self) -> None:
         self.conn.close()
