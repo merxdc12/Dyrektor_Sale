@@ -1,6 +1,8 @@
 """Reusable local record editor for products, pins and boards."""
 from __future__ import annotations
 
+from .board_logic import CATEGORIES, board_seo_issues
+
 from PyQt6.QtWidgets import (
     QComboBox, QDialog, QDialogButtonBox, QFormLayout, QLineEdit,
     QMessageBox, QPlainTextEdit, QVBoxLayout,
@@ -8,7 +10,7 @@ from PyQt6.QtWidgets import (
 
 FIELDS = {
     "products": (("name", "Name"), ("target_url", "Destination URL"), ("category", "Category")),
-    "boards": (("name", "Board name"), ("url", "Board URL"), ("description", "SEO description")),
+    "boards": (("name", "Board name"), ("url", "Board URL"), ("description", "SEO description"), ("category", "Topic category")),
     "pins": (
         ("title", "Title"), ("description", "SEO description"),
         ("destination_url", "Destination URL"), ("product_id", "Product"),
@@ -36,7 +38,8 @@ class RecordEditor(QDialog):
                 if field == "status":
                     options = [(x, x) for x in ("DRAFT", "IN_REVIEW", "READY", "PUBLISHED")]
                 elif field == "category":
-                    options = [(x, x) for x in ("POD", "KDP", "DIGITAL", "FREE_TOOL", "OTHER")]
+                    choices = CATEGORIES if table == "boards" else ("POD", "KDP", "DIGITAL", "FREE_TOOL", "OTHER")
+                    options = [(x, x) for x in choices]
                 else:
                     related = "products" if field == "product_id" else "boards"
                     name = "name"
@@ -68,6 +71,19 @@ class RecordEditor(QDialog):
                 values[field] = widget.currentData()
             else:
                 values[field] = widget.text()
+        if self.table == "boards":
+            issues = board_seo_issues(values["name"], values["description"], values["url"])
+            # A missing name remains a hard error; other checks are editorial guidance.
+            if issues and values["name"].strip():
+                answer = QMessageBox.question(
+                    self, "Board SEO review",
+                    "Editorial recommendations (not Pinterest ranking rules):\\n"
+                    + "\\n".join("• " + issue for issue in issues)
+                    + "\\n\\nSave anyway?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No)
+                if answer != QMessageBox.StandardButton.Yes:
+                    return
         try:
             if self.record:
                 self.storage.update(self.table, self.record["id"], **values)
