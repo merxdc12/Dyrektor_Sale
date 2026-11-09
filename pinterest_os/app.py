@@ -18,6 +18,7 @@ from .calendar import CalendarPage
 from .publishing import PublishingPage
 from .editor import RecordEditor
 from .designer import PinDesigner
+from .carousel import CarouselPage
 from .csv_io import import_pins, export_pins
 from .storage import Storage
 from .workspace import backup_database, verify_database
@@ -140,6 +141,8 @@ class MainWindow(QMainWindow):
                     tabs.addTab(catalog, "Pin Library / CSV")
                     self.pin_designer = PinDesigner(self.storage)
                     tabs.addTab(self.pin_designer, "Pin Designer")
+                    self.carousel_page = CarouselPage(self.storage)
+                    tabs.addTab(self.carousel_page, "Carousel Builder")
                     content.addWidget(tabs, 1)
                 else:
                     self.build_catalog(content, table)
@@ -391,6 +394,8 @@ class MainWindow(QMainWindow):
         self.pause_button.setEnabled(True)
         self.pause_button.setText("Pause")
         self.stop_button.setEnabled(True)
+        self.carousel_page.storage = target
+        self.carousel_page.reload_carousels()
         self.pin_designer.storage = target
         self.pin_designer.reload_pins()
         self.pin_designer._loading = True
