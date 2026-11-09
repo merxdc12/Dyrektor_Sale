@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
+from .calendar import CalendarPage
 from .editor import RecordEditor
 from .storage import Storage
 from .theme import ThemeManager
@@ -23,7 +24,7 @@ TITLES = {
     "FILE": ("Workspace", "Products and content destinations"),
     "PIN": ("Pin library", "Create, edit and organize organic pin drafts"),
     "BOARD": ("Boards", "Manage board names, links and descriptions"),
-    "CALENDAR": ("Publishing calendar", "Plan publishing dates — coming next"),
+    "CALENDAR": ("Publishing calendar", "Plan organic pin publishing dates and times"),
     "PUBLISHING": ("Publishing", "Manual browser-based workflow"),
     "ANALYTICS": ("Analytics", "Performance tracking — coming next"),
     "REPORTS": ("Reports", "Costs and export — coming next"),
@@ -120,6 +121,9 @@ class MainWindow(QMainWindow):
             if name in {"FILE", "PIN", "BOARD"}:
                 table = {"FILE": "products", "PIN": "pins", "BOARD": "boards"}[name]
                 self.build_catalog(content, table)
+            elif name == "CALENDAR":
+                self.calendar_page = CalendarPage(self.storage)
+                content.addWidget(self.calendar_page, 1)
             elif name == "SETTINGS":
                 panel, body = card()
                 body.addWidget(label("Appearance", "Heading"))
