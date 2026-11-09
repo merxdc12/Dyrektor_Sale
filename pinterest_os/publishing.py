@@ -2,14 +2,16 @@
 from __future__ import annotations
 
 import webbrowser
+from pathlib import Path
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QApplication, QHBoxLayout, QLabel, QMessageBox, QPushButton, QTableWidget,
+    QApplication, QComboBox, QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from .publishing_logic import mark_published, pending_queue, publishing_issues
+from .carousel_logic import validate_slides, export_carousel
 
 
 class PublishingPage(QWidget):
@@ -37,9 +39,24 @@ class PublishingPage(QWidget):
             button.clicked.connect(handler)
             buttons.addWidget(button)
         layout.addLayout(buttons)
+        carousel_controls = QHBoxLayout()
+        carousel_controls.addWidget(QLabel("Carousel (manual preparation):"))
+        self.carousel_picker = QComboBox()
+        carousel_controls.addWidget(self.carousel_picker)
+        export_button = QPushButton("Export carousel ZIP")
+        export_button.clicked.connect(self.export_selected_carousel)
+        carousel_controls.addWidget(export_button)
+        layout.addLayout(carousel_controls)
         self.refresh()
 
     def refresh(self):
+        current = self.carousel_picker.currentData()
+        self.carousel_picker.clear()
+        for carousel in self.storage.list_carousels():
+            self.carousel_picker.addItem(carousel["title"], carousel["id"])
+        index = self.carousel_picker.findData(current)
+        if index >= 0:
+            self.carousel_picker.setCurrentIndex(index)
         rows = pending_queue(self.storage)
         self.table.setRowCount(len(rows))
         for i, row in enumerate(rows):
@@ -52,6 +69,28 @@ class PublishingPage(QWidget):
                 cell.setData(Qt.ItemDataRole.UserRole, row["id"])
                 self.table.setItem(i, j, cell)
         self.table.resizeColumnsToContents()
+
+    def export_selected_carousel(self):
+        carousel_id = self.carousel_picker.currentData()
+        if carousel_id is None:
+            QMessageBox.information(self, "No carousel", "Create a carousel in PIN first.")
+            return
+        slides = self.storage.carousel_slides(carousel_id)
+        issues = validate_slides(slides)
+        if issues:
+            QMessageBox.warning(self, "Carousel not ready", "\n".join(issues))
+            return
+        destination, _ = QFileDialog.getSaveFileName(
+            self, "Export carousel for manual publishing", "carousel.zip", "ZIP archive (*.zip)")
+        if not destination:
+            return
+        try:
+            export_carousel(slides, Path(destination), self.carousel_picker.currentText())
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Export failed", str(exc))
+            return
+        QMessageBox.information(self, "Exported",
+            "Carousel files prepared. This does NOT publish or verify anything on Pinterest.")
 
     def selected_id(self):
         row = self.table.currentRow()
