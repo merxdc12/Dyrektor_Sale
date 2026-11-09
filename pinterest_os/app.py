@@ -417,6 +417,8 @@ class MainWindow(QMainWindow):
         self.calendar_page.refresh()
         self.publishing_page.storage = target
         self.publishing_page.refresh()
+        self.analytics_page.storage = target
+        self.analytics_page.refresh()
         for table in self.tables:
             self.refresh(table)
         self.project_label.setText("Active: " + str(folder))
