@@ -37,7 +37,8 @@ class ScheduleDialog(QDialog):
         self.when.setCalendarPopup(True)
         self.when.setDisplayFormat("yyyy-MM-dd HH:mm")
         self.when.setDate(selected)
-        self.when.setTime(QDate.currentDate().startOfDay().addSecs(12 * 3600).time())
+        from PyQt6.QtCore import QTime
+        self.when.setTime(QTime(12, 0))
         form.addRow("Local date / time", self.when)
         self.state = QComboBox()
         for status in STATUS:
@@ -74,7 +75,7 @@ class ScheduleDialog(QDialog):
             names = ", ".join(f"#{item['pin_id']} {item['title']}" for item in collisions[:5])
             answer = QMessageBox.question(
                 self, "Scheduling collision",
-                f"Another pin is planned for the same board and minute:\\n{names}\\n"
+                f"Another pin is planned for the same board and minute:\n{names}\n"
                 "Keep both entries anyway?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No)
@@ -263,12 +264,12 @@ class CalendarPage(QWidget):
         if missing:
             QMessageBox.information(
                 self, "Manual publishing checklist",
-                "Before opening Pinterest, complete:\\n• " + "\\n• ".join(missing))
+                "Before opening Pinterest, complete:\n• " + "\n• ".join(missing))
             return
         answer = QMessageBox.question(
             self, "Manual publishing checklist",
-            "Metadata, board assignment and PNG path are recorded.\\n"
-            "Confirm the image exists, review the content and publish manually.\\n"
+            "Metadata, board assignment and PNG path are recorded.\n"
+            "Confirm the image exists, review the content and publish manually.\n"
             "Open Pinterest in your browser? (No automatic posting.)",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
@@ -383,9 +384,9 @@ class CalendarPage(QWidget):
         shown = self.calendar.yearShown(), self.calendar.monthShown()
         first = QDate(shown[0], shown[1], 1)
         last = first.addMonths(1).addDays(-1)
-        rows = self.storage.schedules_between(
+        rows = filter_entries(self.storage.schedules_between(
             first.toString("yyyy-MM-dd"), last.toString("yyyy-MM-dd"), self.board.currentData()
-        )
+        ), self.status_filter.currentData(), self.overdue_filter.currentData(), datetime.now())
         by_day = {}
         for row in rows:
             by_day.setdefault(row["scheduled_at"][:10], []).append(row["status"])
