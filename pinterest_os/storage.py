@@ -30,6 +30,15 @@ CREATE TABLE IF NOT EXISTS pins (
  CHECK(status IN ('DRAFT','IN_REVIEW','READY','PUBLISHED')),
  created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS carousels (
+ id INTEGER PRIMARY KEY, title TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS carousel_slides (
+ carousel_id INTEGER NOT NULL REFERENCES carousels(id) ON DELETE CASCADE,
+ pin_id INTEGER NOT NULL REFERENCES pins(id) ON DELETE CASCADE,
+ position INTEGER NOT NULL,
+ PRIMARY KEY(carousel_id,pin_id), UNIQUE(carousel_id,position)
+);
 CREATE TABLE IF NOT EXISTS work_sessions (
  id INTEGER PRIMARY KEY, started_at TEXT NOT NULL,
  ended_at TEXT, active_seconds INTEGER NOT NULL DEFAULT 0
@@ -326,6 +335,49 @@ class Storage:
                 (pin_id, scheduled_at, status, entry_id),
             )
         return cursor.rowcount > 0
+
+    def create_carousel(self, title: str) -> int:
+        if not title.strip():
+            raise ValueError("Carousel title is required")
+        with self.conn:
+            row = self.conn.execute("INSERT INTO carousels(title,created_at) VALUES(?,?)",
+                                    (title.strip(), utc_now()))
+        return int(row.lastrowid)
+
+    def list_carousels(self) -> list[dict]:
+        self.conn.row_factory = sqlite3.Row
+        try:
+            return [dict(row) for row in self.conn.execute(
+                "SELECT * FROM carousels ORDER BY id DESC")]
+        finally:
+            self.conn.row_factory = None
+
+    def carousel_slides(self, carousel_id: int) -> list[dict]:
+        self.conn.row_factory = sqlite3.Row
+        try:
+            return [dict(row) for row in self.conn.execute(
+                """SELECT cs.pin_id, cs.position, p.title, d.png_path
+                   FROM carousel_slides cs JOIN pins p ON p.id=cs.pin_id
+                   LEFT JOIN pin_designs d ON d.pin_id=p.id
+                   WHERE cs.carousel_id=? ORDER BY cs.position""", (carousel_id,))]
+        finally:
+            self.conn.row_factory = None
+
+    def set_carousel_slides(self, carousel_id: int, pin_ids: list[int]) -> None:
+        if len(pin_ids) != len(set(pin_ids)):
+            raise ValueError("Duplicate pin in carousel")
+        if len(pin_ids) > 10:
+            raise ValueError("Carousel limit is 10 slides")
+        with self.conn:
+            if not self.conn.execute("SELECT 1 FROM carousels WHERE id=?", (carousel_id,)).fetchone():
+                raise ValueError("Carousel does not exist")
+            for pin_id in pin_ids:
+                if not self.conn.execute("SELECT 1 FROM pins WHERE id=?", (pin_id,)).fetchone():
+                    raise ValueError(f"Pin {pin_id} does not exist")
+            self.conn.execute("DELETE FROM carousel_slides WHERE carousel_id=?", (carousel_id,))
+            self.conn.executemany(
+                "INSERT INTO carousel_slides(carousel_id,pin_id,position) VALUES(?,?,?)",
+                [(carousel_id, pin_id, i) for i, pin_id in enumerate(pin_ids, 1)])
 
     def confirm_manual_publication(self, entry_id: int) -> None:
         """Atomically mark a schedule and pin published, refusing repeated confirmation."""
