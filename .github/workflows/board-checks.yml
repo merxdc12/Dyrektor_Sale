@@ -1,4 +1,4 @@
-name: Board regression checks
+name: Pinterest OS regression checks
 on:
   push:
     paths:
@@ -19,7 +19,7 @@ jobs:
         run: python -m pip install pytest "PyQt6>=6.6,<7"
       - name: Compile all application and test modules
         run: python -m compileall -q pinterest_os tests
-      - name: Board regression tests
+      - name: Board and calendar regression tests
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest -q tests/test_board_logic.py
+        run: python -m pytest -q tests/test_board_logic.py tests/test_calendar_scheduling.py
