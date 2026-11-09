@@ -44,6 +44,13 @@ def report_rows(storage, currency="USD"):
     return output
 
 
+def _safe_csv_cell(value):
+    """Prevent spreadsheet applications from evaluating untrusted text as formulas."""
+    if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@", "\\t", "\\r")):
+        return "'" + value
+    return value
+
+
 def export_report(storage, path, currency="USD"):
     """Export explicit per-product estimates; never overwrite an existing file."""
     rows = report_rows(storage, currency)
@@ -51,7 +58,7 @@ def export_report(storage, path, currency="USD"):
     with destination.open("x", encoding="utf-8-sig", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=FIELDS)
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows([{key: _safe_csv_cell(value) for key, value in row.items()} for row in rows])
     return len(rows)
 
 
