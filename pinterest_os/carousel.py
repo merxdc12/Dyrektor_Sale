@@ -19,19 +19,31 @@ class CarouselPage(QWidget):
         super().__init__(parent)
         self.storage = storage
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Create an ordered multi-image carousel from existing pin PNGs. Manual upload only."))
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(10)
+        title = QLabel("Конструктор каруселі")
+        title.setObjectName("carouselTitle")
+        subtitle = QLabel("Створюйте впорядковану Pinterest-карусель з уже підготовлених PNG-пінів. Публікація залишається ручною.")
+        subtitle.setWordWrap(True)
+        subtitle.setObjectName("carouselSubtitle")
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
         header = QHBoxLayout()
+        header.addWidget(QLabel("Карусель:"))
         self.carousel = QComboBox()
         self.carousel.currentIndexChanged.connect(self.reload_slides)
-        header.addWidget(self.carousel)
-        new = QPushButton("+ New carousel")
-        new.clicked.connect(self.create_carousel)
-        header.addWidget(new)
+        header.addWidget(self.carousel, 1)
+        self.new_carousel_button = QPushButton("+ Нова карусель")
+        self.new_carousel_button.clicked.connect(self.create_carousel)
+        header.addWidget(self.new_carousel_button)
         layout.addLayout(header)
         self.slides = QListWidget()
+        self.slides.setMaximumHeight(120)
         self.slides.currentRowChanged.connect(self.update_preview)
         layout.addWidget(self.slides)
-        layout.addWidget(QLabel("Carousel storyboard — select a thumbnail to preview"))
+        self.storyboard_title = QLabel("Порядок слайдів — виберіть мініатюру для перегляду")
+        self.storyboard_title.setObjectName("carouselSectionLabel")
+        layout.addWidget(self.storyboard_title)
         self.storyboard = QListWidget()
         self.storyboard.setViewMode(QListView.ViewMode.IconMode)
         self.storyboard.setFlow(QListView.Flow.LeftToRight)
@@ -42,35 +54,72 @@ class CarouselPage(QWidget):
         self.storyboard.currentRowChanged.connect(self.slides.setCurrentRow)
         self.slides.currentRowChanged.connect(self.storyboard.setCurrentRow)
         layout.addWidget(self.storyboard)
-        self.preview_label = QLabel("Select a slide to preview")
+        self.preview_label = QLabel()
+        self.preview_label.setObjectName("carouselPreview")
         self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview_label.setWordWrap(True)
         self.preview_label.setMinimumHeight(300)
-        layout.addWidget(self.preview_label)
-        self.slide_info = QLabel("No slides")
+        layout.addWidget(self.preview_label, 1)
+        self.slide_info = QLabel("Слайдів: 0")
+        self.slide_info.setObjectName("carouselSlideInfo")
         layout.addWidget(self.slide_info)
-        fullscreen = QPushButton('Full-screen preview')
-        fullscreen.clicked.connect(self.show_fullscreen)
-        layout.addWidget(fullscreen)
+        self.fullscreen_button = QPushButton("Повноекранний перегляд")
+        self.fullscreen_button.clicked.connect(self.show_fullscreen)
+        layout.addWidget(self.fullscreen_button)
         navigation = QHBoxLayout()
-        previous = QPushButton("Previous slide")
-        previous.clicked.connect(lambda: self.navigate(-1))
-        following = QPushButton("Next slide")
-        following.clicked.connect(lambda: self.navigate(1))
-        navigation.addWidget(previous)
-        navigation.addWidget(following)
+        self.previous_button = QPushButton("← Попередній слайд")
+        self.previous_button.clicked.connect(lambda: self.navigate(-1))
+        self.next_button = QPushButton("Наступний слайд →")
+        self.next_button.clicked.connect(lambda: self.navigate(1))
+        navigation.addWidget(self.previous_button)
+        navigation.addWidget(self.next_button)
         layout.addLayout(navigation)
         buttons = QHBoxLayout()
-        for name, callback in (
-            ("Add pin", self.add_pin), ("Remove", self.remove_pin),
-            ("Move up", lambda: self.move_slide(-1)),
-            ("Move down", lambda: self.move_slide(1)),
-            ("Export ordered ZIP", self.export_zip),
-        ):
-            button = QPushButton(name)
-            button.clicked.connect(callback)
+        self.add_button = QPushButton("Додати пін з бібліотеки")
+        self.add_button.clicked.connect(self.add_pin)
+        self.remove_button = QPushButton("Видалити")
+        self.remove_button.clicked.connect(self.remove_pin)
+        self.move_left_button = QPushButton("← Перемістити ліворуч")
+        self.move_left_button.clicked.connect(lambda: self.move_slide(-1))
+        self.move_right_button = QPushButton("Перемістити праворуч →")
+        self.move_right_button.clicked.connect(lambda: self.move_slide(1))
+        self.export_button = QPushButton("Експортувати ZIP")
+        self.export_button.clicked.connect(self.export_zip)
+        for button in (self.add_button, self.remove_button, self.move_left_button, self.move_right_button, self.export_button):
             buttons.addWidget(button)
         layout.addLayout(buttons)
+        self.setStyleSheet("""
+            #carouselTitle { font-size: 18px; font-weight: 700; }
+            #carouselSubtitle { color: #aebdb4; font-size: 12px; }
+            #carouselSectionLabel, #carouselSlideInfo { color: #c9d5ce; font-size: 12px; }
+            #carouselPreview { border: 1px solid #315442; border-radius: 8px; background: #0b1510; color: #c9d5ce; font-size: 13px; padding: 18px; }
+            QPushButton:disabled { color: #64756b; border-color: #304138; background: #111a15; }
+        """)
         self.reload_carousels()
+
+    def update_controls(self):
+        carousel_exists = self.carousel.currentData() is not None
+        count = self.slides.count()
+        row = self.slides.currentRow()
+        has_slides = count > 0
+        has_selection = has_slides and 0 <= row < count
+        self.slides.setVisible(has_slides)
+        self.storyboard_title.setVisible(has_slides)
+        self.storyboard.setVisible(has_slides)
+        self.add_button.setEnabled(carousel_exists)
+        self.add_button.setText("Додати перший пін" if carousel_exists and not has_slides else "Додати пін з бібліотеки")
+        self.fullscreen_button.setEnabled(has_slides)
+        carousel_id = self.carousel.currentData()
+        export_ready = False
+        if has_slides and carousel_id is not None:
+            export_ready = not validate_slides(self.storage.carousel_slides(carousel_id))
+        self.export_button.setEnabled(export_ready)
+        self.export_button.setToolTip("" if export_ready else "Експорт стане доступним, коли всі слайди матимуть валідні PNG однакового розміру.")
+        self.remove_button.setEnabled(has_selection)
+        self.previous_button.setEnabled(has_selection and row > 0)
+        self.next_button.setEnabled(has_selection and row < count - 1)
+        self.move_left_button.setEnabled(has_selection and row > 0)
+        self.move_right_button.setEnabled(has_selection and row < count - 1)
 
     def reload_carousels(self):
         current = self.carousel.currentData()
@@ -88,11 +137,13 @@ class CarouselPage(QWidget):
         self.storyboard.clear()
         carousel_id = self.carousel.currentData()
         if carousel_id is None:
+            self.update_preview(-1)
+            self.update_controls()
             return
         for row in self.storage.carousel_slides(carousel_id):
             label = f'{row["position"]:02d} — {row["title"]}'
             if not row.get("png_path") or not Path(row["png_path"]).is_file():
-                label += "  [PNG missing]"
+                label += "  [PNG відсутній]"
             self.slides.addItem(label)
             thumbnail = QListWidgetItem(label)
             path = row.get("png_path") or ""
@@ -107,6 +158,7 @@ class CarouselPage(QWidget):
             self.slides.setCurrentRow(0)
         else:
             self.update_preview(-1)
+        self.update_controls()
 
     def navigate(self, delta: int):
         if self.slides.count():
@@ -118,16 +170,25 @@ class CarouselPage(QWidget):
         slides = self.storage.carousel_slides(carousel_id) if carousel_id is not None else []
         if row < 0 or row >= len(slides):
             self.preview_label.clear()
-            self.preview_label.setText("Select a slide to preview")
-            self.slide_info.setText(f"{len(slides)} slides")
+            if self.carousel.currentData() is None:
+                self.preview_label.setText("Створіть першу карусель, щоб почати роботу.")
+                self.slide_info.setText("Карусель не вибрана")
+            elif not slides:
+                self.preview_label.setText("Слайдів ще немає.\n\nДодайте перший пін з бібліотеки, щоб почати карусель.")
+                self.slide_info.setText("Слайдів: 0")
+            else:
+                self.preview_label.setText("Виберіть слайд для перегляду")
+                self.slide_info.setText(f"Слайдів: {len(slides)}")
+            self.update_controls()
             return
         slide = slides[row]
-        self.slide_info.setText(f"Slide {row + 1} of {len(slides)} — {slide['title']}")
+        self.slide_info.setText(f"Слайд {row + 1} з {len(slides)} — {slide['title']}")
+        self.update_controls()
         path = slide.get("png_path") or ""
         pixmap = QPixmap(path) if path and Path(path).is_file() else QPixmap()
         if pixmap.isNull():
             self.preview_label.clear()
-            self.preview_label.setText("PNG missing or unreadable. Export this pin again.")
+            self.preview_label.setText("PNG відсутній або не читається. Експортуйте цей пін повторно.")
             return
         self.preview_label.setPixmap(pixmap.scaled(
             QSize(260, 300), Qt.AspectRatioMode.KeepAspectRatio,
@@ -136,18 +197,18 @@ class CarouselPage(QWidget):
     def show_fullscreen(self):
         carousel_id = self.carousel.currentData()
         if carousel_id is None:
-            QMessageBox.information(self, "No carousel", "Create a carousel first.")
+            QMessageBox.information(self, "Немає каруселі", "Спочатку створіть карусель.")
             return
         slides = self.storage.carousel_slides(carousel_id)
         if not slides:
-            QMessageBox.information(self, "No slides", "Add slides first.")
+            QMessageBox.information(self, "Немає слайдів", "Спочатку додайте слайди.")
             return
         viewer = CarouselViewer(slides, max(0, self.slides.currentRow()), self)
         viewer.exec()
         self.slides.setCurrentRow(viewer.index)
 
     def create_carousel(self):
-        title, ok = QInputDialog.getText(self, "New carousel", "Carousel title:")
+        title, ok = QInputDialog.getText(self, "Нова карусель", "Назва каруселі:")
         if ok and title.strip():
             carousel_id = self.storage.create_carousel(title)
             self.reload_carousels()
@@ -159,22 +220,22 @@ class CarouselPage(QWidget):
     def add_pin(self):
         carousel_id = self.carousel.currentData()
         if carousel_id is None:
-            QMessageBox.information(self, "Create carousel", "Create a carousel first.")
+            QMessageBox.information(self, "Створіть карусель", "Спочатку створіть карусель.")
             return
         existing = self._ids()
         options = [(f'#{p["id"]} — {p["title"]}', p["id"])
                    for p in self.storage.all("pins") if p["id"] not in existing]
         if not options:
-            QMessageBox.information(self, "No pins", "No additional pins available.")
+            QMessageBox.information(self, "Немає пінів", "Немає доступних пінів для додавання.")
             return
-        choice, ok = QInputDialog.getItem(self, "Add pin", "Choose pin:",
+        choice, ok = QInputDialog.getItem(self, "Додати пін", "Виберіть пін:",
                                           [name for name, _ in options], 0, False)
         if ok:
             selected = dict(options)[choice]
             try:
                 self.storage.set_carousel_slides(carousel_id, existing + [selected])
             except ValueError as exc:
-                QMessageBox.warning(self, "Cannot add pin", str(exc))
+                QMessageBox.warning(self, "Не вдалося додати пін", str(exc))
                 return
             self.reload_slides()
 
@@ -201,21 +262,21 @@ class CarouselPage(QWidget):
     def export_zip(self):
         carousel_id = self.carousel.currentData()
         if carousel_id is None:
-            QMessageBox.information(self, "Create carousel", "Create a carousel first.")
+            QMessageBox.information(self, "Створіть карусель", "Спочатку створіть карусель.")
             return
         slides = self.storage.carousel_slides(carousel_id)
         errors = validate_slides(slides)
         if errors:
-            QMessageBox.warning(self, "Carousel not ready", "\n".join(errors))
+            QMessageBox.warning(self, "Карусель не готова", "\n".join(errors))
             return
-        path, _ = QFileDialog.getSaveFileName(self, "Export carousel", "carousel.zip",
-                                               "ZIP archive (*.zip)")
+        path, _ = QFileDialog.getSaveFileName(self, "Експорт каруселі", "carousel.zip",
+                                               "ZIP-архів (*.zip)")
         if not path:
             return
         try:
             export_carousel(slides, Path(path), self.carousel.currentText())
         except (ValueError, OSError) as exc:
-            QMessageBox.warning(self, "Export failed", str(exc))
+            QMessageBox.warning(self, "Помилка експорту", str(exc))
             return
-        QMessageBox.information(self, "Carousel exported",
-                                "Ordered PNGs and manifest saved. Upload manually where supported.")
+        QMessageBox.information(self, "Карусель експортована",
+                                "Впорядковані PNG та manifest збережено. Завантажте їх вручну там, де це підтримується.")

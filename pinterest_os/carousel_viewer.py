@@ -11,7 +11,7 @@ class CarouselViewer(QDialog):
         super().__init__(parent)
         self.slides = slides
         self.index = max(0, min(start, len(slides) - 1))
-        self.setWindowTitle("Carousel preview")
+        self.setWindowTitle("Перегляд каруселі")
         layout = QVBoxLayout(self)
         self.image = QLabel()
         self.image.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -21,9 +21,9 @@ class CarouselViewer(QDialog):
         layout.addWidget(self.image, 1)
         layout.addWidget(self.caption)
         controls = QHBoxLayout()
-        for title, callback in (("Previous", lambda: self.navigate(-1)),
-                                ("Next", lambda: self.navigate(1)),
-                                ("Close", self.accept)):
+        for title, callback in (("← Попередній", lambda: self.navigate(-1)),
+                                ("Наступний →", lambda: self.navigate(1)),
+                                ("Закрити", self.accept)):
             button = QPushButton(title)
             button.clicked.connect(callback)
             controls.addWidget(button)
@@ -52,7 +52,7 @@ class CarouselViewer(QDialog):
         pixmap = QPixmap(path) if path and Path(path).is_file() else QPixmap()
         if pixmap.isNull():
             self.image.clear()
-            self.image.setText("Missing or unreadable PNG")
+            self.image.setText("PNG відсутній або не читається")
         else:
             self.image.setPixmap(pixmap.scaled(
                 max(1, self.image.width()), max(1, self.image.height()),
