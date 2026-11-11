@@ -8,6 +8,7 @@ from PyQt6.QtGui import QPixmap, QIcon
 from PyQt6.QtWidgets import (
     QComboBox, QFileDialog, QHBoxLayout, QInputDialog, QLabel, QListWidget,
     QMessageBox, QPushButton, QVBoxLayout, QWidget, QListView, QListWidgetItem,
+    QSizePolicy,
 )
 
 from .carousel_logic import export_carousel, validate_slides
@@ -38,42 +39,75 @@ class CarouselPage(QWidget):
         header.addWidget(self.new_carousel_button)
         layout.addLayout(header)
         self.slides = QListWidget()
-        self.slides.setMaximumHeight(120)
+        self.slides.setVisible(False)  # internal selection model; storyboard is the visible selector
         self.slides.currentRowChanged.connect(self.update_preview)
         layout.addWidget(self.slides)
-        self.storyboard_title = QLabel("Порядок слайдів — виберіть мініатюру для перегляду")
+        workspace = QHBoxLayout()
+        workspace.setSpacing(14)
+        storyboard_column = QVBoxLayout()
+        self.storyboard_title = QLabel("Порядок слайдів")
         self.storyboard_title.setObjectName("carouselSectionLabel")
-        layout.addWidget(self.storyboard_title)
+        storyboard_column.addWidget(self.storyboard_title)
         self.storyboard = QListWidget()
+        self.storyboard.setObjectName("storyboard")
         self.storyboard.setViewMode(QListView.ViewMode.IconMode)
         self.storyboard.setFlow(QListView.Flow.LeftToRight)
-        self.storyboard.setWrapping(False)
-        self.storyboard.setIconSize(QSize(92, 116))
-        self.storyboard.setGridSize(QSize(120, 150))
-        self.storyboard.setFixedHeight(165)
+        self.storyboard.setWrapping(True)
+        self.storyboard.setIconSize(QSize(92, 125))
+        self.storyboard.setGridSize(QSize(122, 150))
+        self.storyboard.setMinimumHeight(170)
+        self.storyboard.setMaximumHeight(230)
+        self.storyboard.setHorizontalScrollMode(QListView.ScrollMode.ScrollPerPixel)
+        self.storyboard.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
         self.storyboard.currentRowChanged.connect(self.slides.setCurrentRow)
         self.slides.currentRowChanged.connect(self.storyboard.setCurrentRow)
-        layout.addWidget(self.storyboard)
+        storyboard_column.addWidget(self.storyboard, 1)
+        workspace.addLayout(storyboard_column, 1)
+
+        preview_column = QVBoxLayout()
+        preview_column.setSpacing(6)
+        preview_heading = QLabel("Попередній перегляд")
+        preview_heading.setObjectName("carouselSectionLabel")
+        preview_column.addWidget(preview_heading)
+        preview_row = QHBoxLayout()
+        preview_row.addStretch(1)
         self.preview_label = QLabel()
         self.preview_label.setObjectName("carouselPreview")
         self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview_label.setWordWrap(True)
-        self.preview_label.setMinimumHeight(300)
-        layout.addWidget(self.preview_label, 1)
+        self.preview_label.setFixedSize(170, 255)
+        self.preview_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        preview_row.addWidget(self.preview_label)
+        preview_row.addStretch(1)
+        preview_column.addLayout(preview_row)
         self.slide_info = QLabel("Слайдів: 0")
         self.slide_info.setObjectName("carouselSlideInfo")
-        layout.addWidget(self.slide_info)
-        self.fullscreen_button = QPushButton("Повноекранний перегляд")
-        self.fullscreen_button.clicked.connect(self.show_fullscreen)
-        layout.addWidget(self.fullscreen_button)
+        self.slide_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview_column.addWidget(self.slide_info)
+        self.validation_status = QLabel("PNG: —")
+        self.validation_status.setObjectName("carouselValidation")
+        self.validation_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.validation_status.setWordWrap(True)
+        preview_column.addWidget(self.validation_status)
         navigation = QHBoxLayout()
-        self.previous_button = QPushButton("← Попередній слайд")
+        navigation.addStretch(1)
+        self.previous_button = QPushButton("←")
+        self.previous_button.setToolTip("Попередній слайд")
+        self.previous_button.setMaximumWidth(48)
         self.previous_button.clicked.connect(lambda: self.navigate(-1))
-        self.next_button = QPushButton("Наступний слайд →")
+        self.fullscreen_button = QPushButton("Повноекранний")
+        self.fullscreen_button.clicked.connect(self.show_fullscreen)
+        self.next_button = QPushButton("→")
+        self.next_button.setToolTip("Наступний слайд")
+        self.next_button.setMaximumWidth(48)
         self.next_button.clicked.connect(lambda: self.navigate(1))
         navigation.addWidget(self.previous_button)
+        navigation.addWidget(self.fullscreen_button)
         navigation.addWidget(self.next_button)
-        layout.addLayout(navigation)
+        navigation.addStretch(1)
+        preview_column.addLayout(navigation)
+        workspace.addLayout(preview_column)
+        layout.addLayout(workspace, 1)
         buttons = QHBoxLayout()
         self.add_button = QPushButton("Додати пін з бібліотеки")
         self.add_button.clicked.connect(self.add_pin)
@@ -91,8 +125,12 @@ class CarouselPage(QWidget):
         self.setStyleSheet("""
             #carouselTitle { font-size: 18px; font-weight: 700; }
             #carouselSubtitle { color: #aebdb4; font-size: 12px; }
-            #carouselSectionLabel, #carouselSlideInfo { color: #c9d5ce; font-size: 12px; }
-            #carouselPreview { border: 1px solid #315442; border-radius: 8px; background: #0b1510; color: #c9d5ce; font-size: 13px; padding: 18px; }
+            #carouselSectionLabel { color: #d7e6dd; font-size: 13px; font-weight: 700; }
+            #carouselSlideInfo { color: #c9d5ce; font-size: 12px; }
+            #carouselValidation { color: #9db3a5; font-size: 11px; }
+            #carouselPreview { border: 1px solid #315442; border-radius: 8px; background: #07100b; color: #c9d5ce; font-size: 13px; padding: 10px; }
+            QListWidget#storyboard { background: #09120d; border: 1px solid #294436; border-radius: 8px; }
+            QListWidget::item:selected { background: #173c28; color: #e7fff0; border: 1px solid #42e58d; }
             QPushButton:disabled { color: #64756b; border-color: #304138; background: #111a15; }
         """)
         self.reload_carousels()
@@ -103,7 +141,7 @@ class CarouselPage(QWidget):
         row = self.slides.currentRow()
         has_slides = count > 0
         has_selection = has_slides and 0 <= row < count
-        self.slides.setVisible(has_slides)
+        self.slides.setVisible(False)
         self.storyboard_title.setVisible(has_slides)
         self.storyboard.setVisible(has_slides)
         self.add_button.setEnabled(carousel_exists)
@@ -115,6 +153,16 @@ class CarouselPage(QWidget):
             export_ready = not validate_slides(self.storage.carousel_slides(carousel_id))
         self.export_button.setEnabled(export_ready)
         self.export_button.setToolTip("" if export_ready else "Експорт стане доступним, коли всі слайди матимуть валідні PNG однакового розміру.")
+        if not has_slides:
+            self.validation_status.setText("PNG: —")
+        elif export_ready:
+            self.validation_status.setText("PNG: OK • готово до експорту")
+            self.validation_status.setStyleSheet("color:#42e58d")
+        else:
+            errors = validate_slides(self.storage.carousel_slides(carousel_id)) if carousel_id is not None else []
+            reason = errors[0] if errors else "потрібна перевірка"
+            self.validation_status.setText(f"PNG: не готово • {reason}")
+            self.validation_status.setStyleSheet("color:#f4c45e")
         self.remove_button.setEnabled(has_selection)
         self.previous_button.setEnabled(has_selection and row > 0)
         self.next_button.setEnabled(has_selection and row < count - 1)
@@ -145,13 +193,14 @@ class CarouselPage(QWidget):
             if not row.get("png_path") or not Path(row["png_path"]).is_file():
                 label += "  [PNG відсутній]"
             self.slides.addItem(label)
-            thumbnail = QListWidgetItem(label)
+            thumbnail = QListWidgetItem(f'{row["position"]:02d}  {row["title"]}')
+            thumbnail.setTextAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
             path = row.get("png_path") or ""
             if path and Path(path).is_file():
                 pixmap = QPixmap(path)
                 if not pixmap.isNull():
                     thumbnail.setIcon(QIcon(pixmap.scaled(
-                        QSize(92, 116), Qt.AspectRatioMode.KeepAspectRatio,
+                        QSize(110, 150), Qt.AspectRatioMode.KeepAspectRatio,
                         Qt.TransformationMode.SmoothTransformation)))
             self.storyboard.addItem(thumbnail)
         if self.slides.count():
@@ -191,7 +240,7 @@ class CarouselPage(QWidget):
             self.preview_label.setText("PNG відсутній або не читається. Експортуйте цей пін повторно.")
             return
         self.preview_label.setPixmap(pixmap.scaled(
-            QSize(260, 300), Qt.AspectRatioMode.KeepAspectRatio,
+            QSize(150, 225), Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation))
 
     def show_fullscreen(self):
